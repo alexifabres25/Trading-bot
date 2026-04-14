@@ -28,6 +28,11 @@ CAPITAL: float = float(os.getenv("CAPITAL", "400"))
 RISK_PER_TRADE: float = float(os.getenv("RISK_PER_TRADE", "0.01"))
 STOP_LOSS_PCT: float = float(os.getenv("STOP_LOSS_PCT", "0.02"))
 
+# ── Trailing stop ──────────────────────────────────────────────────────────────
+# Active par défaut : le stop monte avec le prix, ne redescend jamais
+TRAILING_STOP: bool = os.getenv("TRAILING_STOP", "true").lower() == "true"
+TRAILING_STOP_PCT: float = float(os.getenv("TRAILING_STOP_PCT", "0.02"))
+
 # ── Stratégie ──────────────────────────────────────────────────────────────────
 TIMEFRAME_SHORT: str = os.getenv("TIMEFRAME_SHORT", "1h")
 TIMEFRAME_LONG: str = os.getenv("TIMEFRAME_LONG", "4h")

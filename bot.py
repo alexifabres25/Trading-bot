@@ -20,7 +20,7 @@ from pathlib import Path
 import config
 from exchange.client import BinanceClient
 from notifications.telegram_bot import send_error, send_status, send_trade_alert
-from risk.manager import calculate_position_size, calculate_stop_loss
+from risk.manager import calculate_position_size, calculate_stop_loss, update_trailing_stop
 from strategy.signal import BUY, HOLD, SELL, generate_1h_signal, get_4h_trend
 
 # ── Logging ────────────────────────────────────────────────────────────────────
@@ -69,7 +69,18 @@ def process_pair(client: BinanceClient, symbol: str, positions: dict):
 
     position = positions.get(symbol)
 
-    # ── 1. Vérifier le stop-loss ───────────────────────────────────────────────
+    # ── 1. Mettre à jour le trailing stop ─────────────────────────────────────
+    if position and config.TRAILING_STOP:
+        max_price, new_stop = update_trailing_stop(price, position)
+        if new_stop > position["stop_loss"]:
+            logger.info(
+                f"[{symbol}] Trailing stop : {position['stop_loss']:.4f} → {new_stop:.4f}"
+                f"  (max={max_price:.4f})"
+            )
+            position["max_price"] = max_price
+            position["stop_loss"] = new_stop
+
+    # ── 2. Vérifier le stop-loss (fixe ou trailing) ───────────────────────────
     if position and price <= position["stop_loss"]:
         logger.info(
             f"[{symbol}] STOP-LOSS déclenché  prix={price:.4f}  stop={position['stop_loss']:.4f}"
@@ -77,14 +88,14 @@ def process_pair(client: BinanceClient, symbol: str, positions: dict):
         _close_position(client, symbol, position, price, positions, reason="stop-loss")
         return
 
-    # ── 2. Fermer la position sur signal SELL ou retournement 4h ──────────────
+    # ── 3. Fermer la position sur signal SELL ou retournement 4h ──────────────
     if position and (signal_1h == SELL or trend_4h == "bear"):
         reason = f"signal={signal_1h}" if signal_1h == SELL else "tendance 4h baissière"
         logger.info(f"[{symbol}] Fermeture position ({reason})")
         _close_position(client, symbol, position, price, positions, reason=reason)
         return
 
-    # ── 3. Ouvrir une position sur signal BUY confirmé par la tendance 4h ─────
+    # ── 4. Ouvrir une position sur signal BUY confirmé par la tendance 4h ─────
     # On entre si la tendance 4h est haussière ou neutre (on évite d'acheter en bear)
     if not position and signal_1h == BUY and trend_4h != "bear":
         logger.info(f"[{symbol}] Signal BUY confirmé (tendance 4h={trend_4h})")

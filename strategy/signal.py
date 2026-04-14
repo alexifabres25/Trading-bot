@@ -1,0 +1,48 @@
+import pandas as pd
+
+import config
+from strategy.indicators import add_indicators, get_ema_trend
+
+BUY = "BUY"
+SELL = "SELL"
+HOLD = "HOLD"
+
+
+def generate_1h_signal(df: pd.DataFrame) -> str:
+    """
+    Stratégie 1h : croisement EMA 9 / EMA 21 filtré par RSI 14.
+
+    - BUY  : EMA 9 croise au-dessus EMA 21  ET  RSI < 70 (pas en surachat)
+    - SELL : EMA 9 croise en-dessous EMA 21  ET  RSI > 30 (pas en survente)
+    - HOLD : aucun croisement sur la dernière bougie
+    """
+    df = add_indicators(df, config.EMA_FAST, config.EMA_SLOW, config.RSI_PERIOD)
+    df = df.dropna()
+
+    if len(df) < 3:
+        return HOLD
+
+    fast = df[f"ema_{config.EMA_FAST}"]
+    slow = df[f"ema_{config.EMA_SLOW}"]
+    rsi = df["rsi"]
+
+    # Croisement haussier : fast passe au-dessus de slow
+    bullish_cross = (fast.iloc[-2] <= slow.iloc[-2]) and (fast.iloc[-1] > slow.iloc[-1])
+    # Croisement baissier : fast passe en-dessous de slow
+    bearish_cross = (fast.iloc[-2] >= slow.iloc[-2]) and (fast.iloc[-1] < slow.iloc[-1])
+
+    if bullish_cross and rsi.iloc[-1] < config.RSI_OVERBOUGHT:
+        return BUY
+    if bearish_cross and rsi.iloc[-1] > config.RSI_OVERSOLD:
+        return SELL
+    return HOLD
+
+
+def get_4h_trend(df: pd.DataFrame) -> str:
+    """
+    Filtre de tendance 4h basé sur l'alignement EMA 9 / EMA 21.
+    Retourne 'bull', 'bear', ou 'neutral'.
+    """
+    df = add_indicators(df, config.EMA_FAST, config.EMA_SLOW, config.RSI_PERIOD)
+    df = df.dropna()
+    return get_ema_trend(df, config.EMA_FAST, config.EMA_SLOW)

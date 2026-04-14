@@ -87,7 +87,7 @@ def get_kelly_risk_pct() -> float:
     closed = [t for t in journal if t.get("status") == "closed"]
     lookback = closed[-config.KELLY_LOOKBACK:] if len(closed) > config.KELLY_LOOKBACK else closed
 
-    if len(lookback) < 10:
+    if len(lookback) < 5:
         logger.debug(f"[Kelly] {len(lookback)} trades — fallback sur RISK_PER_TRADE")
         return config.RISK_PER_TRADE
 

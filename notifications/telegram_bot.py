@@ -31,11 +31,18 @@ def send_message(text: str) -> bool:
         return False
 
 
-def send_trade_alert(action: str, pair: str, price: float, qty: float, stop_loss: float | None = None):
+def send_trade_alert(
+    action: str,
+    pair: str,
+    price: float,
+    qty: float,
+    stop_loss: float | None = None,
+    bot_name: str = "Trading Bot",
+):
     """Alerte d'ordre (achat ou vente)."""
     icon = "🟢" if "BUY" in action else "🔴"
     lines = [
-        f"{icon} *{action} — {pair}*",
+        f"{icon} *{action} — {pair}*  _[{bot_name}]_",
         f"Prix       : `{price:.4f} USDT`",
         f"Quantité   : `{qty:.6f}`",
         f"Valeur     : `{price * qty:.2f} USDT`",

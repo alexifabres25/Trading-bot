@@ -29,10 +29,10 @@ logging.basicConfig(
     format="%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler("bot.log"),
+        logging.FileHandler(f"{config.STATE_FILE.replace('state', 'bot').replace('.json', '.log')}"),
     ],
 )
-logger = logging.getLogger("bot")
+logger = logging.getLogger(config.BOT_NAME)
 
 
 # ── State (positions ouvertes) ─────────────────────────────────────────────────
@@ -123,6 +123,7 @@ def _open_position(client: BinanceClient, symbol: str, price: float, positions: 
         send_trade_alert(
             "BUY (simulation)" if config.DRY_RUN else "BUY",
             symbol, filled_price, qty, stop_loss,
+            bot_name=config.BOT_NAME,
         )
         logger.info(
             f"[{symbol}] Position ouverte  entrée={filled_price:.4f}  "
@@ -149,9 +150,10 @@ def _close_position(
         send_trade_alert(
             "SELL (simulation)" if config.DRY_RUN else "SELL",
             symbol, price, position["amount"],
+            bot_name=config.BOT_NAME,
         )
         send_status(
-            f"Position fermée sur *{symbol}* ({reason})\n"
+            f"*{config.BOT_NAME}* — Position fermée sur *{symbol}* ({reason})\n"
             f"PnL estimé : `{pnl:+.2f} USDT` ({pnl_pct:+.2f} %)"
         )
         logger.info(
@@ -167,18 +169,19 @@ def _close_position(
 
 def main():
     logger.info("=" * 60)
-    logger.info("Crypto Trading Bot — démarrage")
+    logger.info(f"{config.BOT_NAME} — démarrage")
     mode = "DRY RUN" if config.DRY_RUN else ("TESTNET" if config.USE_TESTNET else "*** LIVE ***")
     logger.info(f"Mode    : {mode}")
     logger.info(f"Paires  : {', '.join(config.TRADING_PAIRS)}")
-    logger.info(f"Capital : {config.CAPITAL} USDT")
+    logger.info(f"Capital : {config.CAPITAL} USDT  |  Risque/trade : {config.RISK_PER_TRADE*100:.0f} %  |  SL : {config.STOP_LOSS_PCT*100:.1f} %")
     logger.info("=" * 60)
 
     client = BinanceClient()
     send_status(
-        f"Bot démarré — mode *{mode}*\n"
-        f"Paires : {', '.join(config.TRADING_PAIRS)}\n"
-        f"Capital : {config.CAPITAL} USDT"
+        f"*{config.BOT_NAME}* démarré — mode *{mode}*\n"
+        f"Paires   : {', '.join(config.TRADING_PAIRS)}\n"
+        f"Capital  : {config.CAPITAL} USDT\n"
+        f"Risque   : {config.RISK_PER_TRADE*100:.0f} % / trade  |  SL : {config.STOP_LOSS_PCT*100:.1f} %"
     )
 
     positions = load_state()

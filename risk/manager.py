@@ -242,22 +242,43 @@ def update_trailing_stop(current_price: float, position: dict) -> tuple[float, f
 
 def calculate_position_size(entry_price: float, available_usdt: float) -> float:
     """
-    Quantité à acheter basée sur le risque dynamique (Kelly + DD scaling).
+    RM_EquityPercent — taille de position basée sur l'ÉQUITÉ RÉELLE DU MOMENT.
 
-        risque_usdt = CAPITAL × get_dynamic_risk_pct()
-        distance_SL = entry_price × STOP_LOSS_PCT
-        quantité    = risque_usdt / distance_SL
+    Contrairement à un capital fixe, ce mode s'adapte en permanence :
+      → Équité qui monte : positions plus grandes (effet compound naturel)
+      → Équité qui baisse : positions plus petites (protection automatique)
+
+    Formule :
+        équité_actuelle  = solde réel récupéré de l'exchange
+        risque_usdt      = équité_actuelle × risk_pct_dynamique
+        distance_SL      = entry_price × STOP_LOSS_PCT
+        quantité         = risque_usdt / distance_SL
+
+    Exemple — départ 400€, 5 trades gagnants → équité 450€ :
+        Avant (RM_Fixed)        : risque = 400 × 1% = 4.00 USDT  (ne s'adapte jamais)
+        Maintenant (RM_Equity%) : risque = 450 × 1% = 4.50 USDT  (compound automatique)
+
+    Exemple inverse — 3 pertes → équité 370€ :
+        RM_Fixed  : risque toujours 4.00 USDT  (dangereux)
+        RM_Equity%: risque = 370 × 1% = 3.70 USDT  (protection automatique)
     """
     risk_pct = get_dynamic_risk_pct()
-    risk_usdt = config.CAPITAL * risk_pct
+
+    # Équité actuelle (mise à jour à chaque cycle par update_equity dans bot.py)
+    equity_state = _load_equity_state()
+    current_equity = equity_state.get("current_equity", config.CAPITAL)
+
+    risk_usdt = current_equity * risk_pct
     stop_distance = entry_price * config.STOP_LOSS_PCT
     qty = risk_usdt / stop_distance
 
+    # Sécurité : ne jamais dépasser le solde disponible
     max_qty = (available_usdt / entry_price) * 0.99
     qty = min(qty, max_qty)
 
     logger.info(
-        f"[Position] risque={risk_pct:.2%}  "
-        f"risk_usdt={risk_usdt:.2f}  qty={qty:.6f}"
+        f"[RM_Equity%] équité={current_equity:.2f}€  "
+        f"risque={risk_pct:.2%}  risk_usdt={risk_usdt:.2f}  qty={qty:.6f}"
     )
+    return round(qty, 6)
     return round(qty, 6)

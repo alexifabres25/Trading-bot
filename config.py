@@ -63,6 +63,16 @@ RISK_AT_DD_TIER_3: float = 0.0025  # 0.25 %
 
 RISK_BEYOND_TIER_3: float = 0.001  # DD > 6 % → mode survie 0.1 %
 
+# ── Supertrend — stop-loss adaptatif basé sur la volatilité réelle (ATR) ──────
+SUPERTREND_PERIOD: int = 10
+SUPERTREND_MULTIPLIER: float = 3.0
+
+# ── Health Monitor — suspension et reprise automatiques ───────────────────────
+MAX_CONSECUTIVE_LOSSES: int = 5        # pause après N pertes consécutives
+MAX_DAILY_DD_PCT: float = 0.04         # pause si drawdown journalier > 4%
+PAUSE_DURATION_HOURS: int = 24         # durée de pause avant reprise automatique
+DAILY_REPORT_HOUR: int = 8             # heure UTC du rapport Telegram quotidien
+
 # ── ADX — filtre de tendance (issu de la recherche algo trading) ───────────────
 ADX_PERIOD: int = 14
 ADX_TREND_MIN: int = int(os.getenv("ADX_TREND_MIN", "20"))  # ADX < 20 = marché en range, on n'entre pas

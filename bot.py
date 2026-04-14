@@ -24,8 +24,9 @@ from learning.analyzer import analyze_and_adapt
 from learning.journal import record_entry, record_exit
 from risk.manager import update_equity, update_risk_multiplier
 from notifications.telegram_bot import send_error, send_status, send_trade_alert
+from learning.health import is_paused, maybe_send_daily_report, record_outcome
 from risk.manager import calculate_position_size, calculate_stop_loss, update_trailing_stop
-from strategy.indicators import get_indicator_context
+from strategy.indicators import get_indicator_context, get_supertrend_stop
 from strategy.signal import BUY, HOLD, SELL, generate_1h_signal, get_4h_trend
 
 # ── Logging ────────────────────────────────────────────────────────────────────
@@ -74,16 +75,26 @@ def process_pair(client: BinanceClient, symbol: str, positions: dict):
 
     position = positions.get(symbol)
 
-    # ── 1. Mettre à jour le trailing stop ─────────────────────────────────────
-    if position and config.TRAILING_STOP:
-        max_price, new_stop = update_trailing_stop(price, position)
-        if new_stop > position["stop_loss"]:
+    # ── 1. Mettre à jour le stop (Supertrend adaptatif en priorité) ───────────
+    if position:
+        # Supertrend : stop basé sur la volatilité réelle (ATR) — s'adapte au marché
+        st_stop = get_supertrend_stop(df_1h)
+        if st_stop and st_stop > position["stop_loss"]:
             logger.info(
-                f"[{symbol}] Trailing stop : {position['stop_loss']:.4f} → {new_stop:.4f}"
-                f"  (max={max_price:.4f})"
+                f"[{symbol}] Supertrend stop : {position['stop_loss']:.4f} "
+                f"→ {st_stop:.4f}"
             )
-            position["max_price"] = max_price
-            position["stop_loss"] = new_stop
+            position["stop_loss"] = round(st_stop, 8)
+        elif config.TRAILING_STOP:
+            # Fallback : trailing stop classique si Supertrend indisponible
+            max_price, new_stop = update_trailing_stop(price, position)
+            if new_stop > position["stop_loss"]:
+                logger.info(
+                    f"[{symbol}] Trailing stop : {position['stop_loss']:.4f} "
+                    f"→ {new_stop:.4f}"
+                )
+                position["max_price"] = max_price
+                position["stop_loss"] = new_stop
 
     # ── 2. Vérifier le stop-loss (fixe ou trailing) ───────────────────────────
     if position and price <= position["stop_loss"]:
@@ -208,11 +219,14 @@ def _close_position(
         )
         del positions[symbol]
 
-        # Ajuste le multiplicateur de risque (-10% si perte, +5% si gain)
+        # 1. Multiplicateur progressif (-10%/perte, +5%/gain)
         outcome = "win" if pnl > 0 else "loss"
         update_risk_multiplier(outcome)
 
-        # Analyse post-trade : détecte les erreurs et adapte les paramètres
+        # 2. Health monitor (pertes consécutives, drawdown journalier)
+        record_outcome(pnl)
+
+        # 3. Analyse post-trade : apprentissage et adaptation des paramètres
         analyze_and_adapt(symbol)
 
     except Exception as exc:
@@ -248,13 +262,23 @@ def main():
 
     while True:
         try:
-            # Met à jour l'équité avant chaque cycle (nécessaire pour le DD scaling)
-            current_balance = client.get_usdt_balance()
-            update_equity(current_balance)
+            # Rapport journalier automatique (Telegram, heure configurée)
+            maybe_send_daily_report()
 
-            for symbol in config.TRADING_PAIRS:
-                process_pair(client, symbol, positions)
-            save_state(positions)
+            # Vérification du Health Monitor — pause/reprise autonome
+            if is_paused():
+                logger.info(
+                    f"[Health] Trading suspendu — "
+                    f"prochaine vérification dans {config.LOOP_INTERVAL}s"
+                )
+            else:
+                # Mise à jour équité (RM_EquityPercent + DD scaling)
+                current_balance = client.get_usdt_balance()
+                update_equity(current_balance)
+
+                for symbol in config.TRADING_PAIRS:
+                    process_pair(client, symbol, positions)
+                save_state(positions)
 
         except KeyboardInterrupt:
             logger.info("Arrêt demandé par l'utilisateur.")

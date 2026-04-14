@@ -281,4 +281,3 @@ def calculate_position_size(entry_price: float, available_usdt: float) -> float:
         f"risque={risk_pct:.2%}  risk_usdt={risk_usdt:.2f}  qty={qty:.6f}"
     )
     return round(qty, 6)
-    return round(qty, 6)

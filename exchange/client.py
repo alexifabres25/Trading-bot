@@ -222,7 +222,8 @@ class BinanceClient:
                 time.sleep(3)
                 status = _safe_call(self.exchange.fetch_order, order_id, symbol)
                 if status["status"] == "closed":
-                    logger.info(f"[Limit] {symbol} rempli @ {status.get('average'):.4f}")
+                    avg = float(status.get("average") or status.get("price") or 0)
+                    logger.info(f"[Limit] {symbol} rempli @ {avg:.4f}")
                     return status
                 if status["status"] == "canceled":
                     logger.warning(f"[Limit] {symbol} annulé, fallback market")

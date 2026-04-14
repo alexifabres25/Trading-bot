@@ -19,6 +19,7 @@ from pathlib import Path
 
 import config
 from exchange.client import BinanceClient
+from exchange.sync import reconcile
 from learning.analyzer import analyze_and_adapt
 from learning.journal import record_entry, record_exit
 from risk.manager import update_equity
@@ -130,11 +131,17 @@ def _open_position(
             )
             return
 
-        order = client.place_market_buy(symbol, qty)
+        # Choix du type d'ordre selon config (limit réduit les frais, market = sécurité)
+        if config.ORDER_TYPE == "limit":
+            order = client.place_limit_buy(symbol, qty, price)
+        else:
+            order = client.place_market_buy(symbol, qty, expected_price=price)
+
         filled_price = float(order.get("average") or order.get("price") or price)
+        slippage_pct = order.get("slippage_pct", 0.0)
         stop_loss = calculate_stop_loss(filled_price)
 
-        # Enregistre dans le journal avec le contexte complet des indicateurs
+        # Enregistre dans le journal avec contexte complet + slippage réel
         trade_id = record_entry(
             symbol=symbol,
             entry_price=filled_price,
@@ -143,6 +150,7 @@ def _open_position(
             rsi=indicator_ctx.get("rsi", 50.0),
             ema_spread_pct=indicator_ctx.get("ema_spread_pct", 0.0),
             trend_4h=trend_4h,
+            slippage_pct=slippage_pct,
         )
 
         positions[symbol] = {
@@ -230,6 +238,9 @@ def main():
     positions = load_state()
     if positions:
         logger.info(f"{len(positions)} position(s) rechargée(s) depuis {config.STATE_FILE}")
+        # Synchronisation portefeuille : vérifie que l'état correspond à l'exchange réel
+        positions = reconcile(client, positions)
+        save_state(positions)
 
     while True:
         try:

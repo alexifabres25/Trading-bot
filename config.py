@@ -67,6 +67,19 @@ RSI_OVERSOLD: int = int(os.getenv("RSI_OVERSOLD", "30"))
 RSI_OVERBOUGHT: int = int(os.getenv("RSI_OVERBOUGHT", "70"))
 CANDLES_LIMIT: int = 150
 
+# ── Type d'ordre ──────────────────────────────────────────────────────────────
+# "market" = exécution immédiate (taker, frais 0.1%)
+# "limit"  = maker si rempli, sinon fallback market après LIMIT_ORDER_TIMEOUT
+ORDER_TYPE: str = os.getenv("ORDER_TYPE", "market")
+LIMIT_ORDER_OFFSET: float = 0.0005   # +0.05% au-dessus du prix pour limit buy
+LIMIT_ORDER_TIMEOUT: int = int(os.getenv("LIMIT_ORDER_TIMEOUT", "30"))  # secondes
+
+# ── Résilience API ─────────────────────────────────────────────────────────────
+API_MAX_RETRIES: int = 4
+API_BASE_DELAY: float = 2.0           # délais : 2s → 4s → 8s → 16s
+API_CIRCUIT_BREAKER_THRESHOLD: int = 5     # N échecs → circuit ouvert
+API_CIRCUIT_BREAKER_TIMEOUT: float = 120.0 # secondes avant réessai
+
 # ── Boucle principale ──────────────────────────────────────────────────────────
 LOOP_INTERVAL: int = int(os.getenv("LOOP_INTERVAL", "300"))
 STATE_FILE: str = os.getenv("STATE_FILE", "state.json")

@@ -39,6 +39,7 @@ def record_entry(
     rsi: float,
     ema_spread_pct: float,
     trend_4h: str,
+    slippage_pct: float = 0.0,
 ) -> str:
     """
     Enregistre l'ouverture d'une position.
@@ -60,6 +61,7 @@ def record_entry(
         "entry_rsi": round(rsi, 2),
         "entry_ema_spread_pct": round(ema_spread_pct, 4),
         "entry_4h_trend": trend_4h,
+        "entry_slippage_pct": round(slippage_pct, 4),
     }
     journal = load_journal()
     journal.append(entry)

@@ -1,14 +1,10 @@
 import os
 from dotenv import load_dotenv
 
-# Charge le fichier .env spécifié par BOT_CONFIG (défaut : .env)
-# Permet de lancer deux bots en parallèle avec des configs différentes :
-#   BOT_CONFIG=.env.conservative python bot.py
-#   BOT_CONFIG=.env.aggressive   python bot.py
 _env_file = os.environ.get("BOT_CONFIG", ".env")
 load_dotenv(_env_file)
 
-# ── Identifiant du bot (affiché dans les alertes Telegram) ────────────────────
+# ── Identifiant du bot ─────────────────────────────────────────────────────────
 BOT_NAME: str = os.getenv("BOT_NAME", "Trading Bot")
 
 # ── Exchange ───────────────────────────────────────────────────────────────────
@@ -25,13 +21,41 @@ TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")
 _pairs_raw = os.getenv("TRADING_PAIRS", "BTC/USDT,ETH/USDT")
 TRADING_PAIRS: list[str] = [p.strip() for p in _pairs_raw.split(",")]
 CAPITAL: float = float(os.getenv("CAPITAL", "400"))
-RISK_PER_TRADE: float = float(os.getenv("RISK_PER_TRADE", "0.01"))
+RISK_PER_TRADE: float = float(os.getenv("RISK_PER_TRADE", "0.01"))  # fallback si pas assez de trades Kelly
 STOP_LOSS_PCT: float = float(os.getenv("STOP_LOSS_PCT", "0.02"))
+FEE_RATE: float = 0.001  # 0.1 % par ordre Binance (taker)
 
 # ── Trailing stop ──────────────────────────────────────────────────────────────
-# Active par défaut : le stop monte avec le prix, ne redescend jamais
 TRAILING_STOP: bool = os.getenv("TRAILING_STOP", "true").lower() == "true"
 TRAILING_STOP_PCT: float = float(os.getenv("TRAILING_STOP_PCT", "0.02"))
+
+# ── Kelly Criterion ────────────────────────────────────────────────────────────
+# Dimensionne le risque automatiquement selon le vrai track record du bot.
+# Quarter-Kelly (0.25) = version conservatrice, réduit la variance de 75 %.
+KELLY_FRACTION: float = float(os.getenv("KELLY_FRACTION", "0.25"))
+KELLY_LOOKBACK: int = int(os.getenv("KELLY_LOOKBACK", "100"))   # nb trades pour calcul W/R
+RISK_MAX_CAP: float = float(os.getenv("RISK_MAX_CAP", "0.02"))  # plafond 2 % quoi qu'il arrive
+RISK_MIN_FLOOR: float = float(os.getenv("RISK_MIN_FLOOR", "0.001"))  # plancher 0.1 %
+
+# ── Drawdown-based risk scaling ────────────────────────────────────────────────
+# Réduit progressivement le risque par palier quand le bot est en drawdown.
+# Valeurs calquées sur les screenshots MetaTrader (TrendWin EA).
+DD_SCALING_ENABLED: bool = os.getenv("DD_SCALING_ENABLED", "true").lower() == "true"
+
+DD_TIER_1: float = 0.02       # DD ≥ 2 % → passage au tier 1
+RISK_AT_DD_TIER_1: float = 0.0075  # 0.75 %
+
+DD_TIER_2: float = 0.04       # DD ≥ 4 % → tier 2
+RISK_AT_DD_TIER_2: float = 0.005   # 0.5 %
+
+DD_TIER_3: float = 0.06       # DD ≥ 6 % → tier 3
+RISK_AT_DD_TIER_3: float = 0.0025  # 0.25 %
+
+RISK_BEYOND_TIER_3: float = 0.001  # DD > 6 % → mode survie 0.1 %
+
+# ── ADX — filtre de tendance (issu de la recherche algo trading) ───────────────
+ADX_PERIOD: int = 14
+ADX_TREND_MIN: int = int(os.getenv("ADX_TREND_MIN", "20"))  # ADX < 20 = marché en range, on n'entre pas
 
 # ── Stratégie ──────────────────────────────────────────────────────────────────
 TIMEFRAME_SHORT: str = os.getenv("TIMEFRAME_SHORT", "1h")
@@ -46,3 +70,4 @@ CANDLES_LIMIT: int = 150
 # ── Boucle principale ──────────────────────────────────────────────────────────
 LOOP_INTERVAL: int = int(os.getenv("LOOP_INTERVAL", "300"))
 STATE_FILE: str = os.getenv("STATE_FILE", "state.json")
+EQUITY_FILE: str = os.getenv("EQUITY_FILE", "equity.json")

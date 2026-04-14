@@ -3,11 +3,16 @@ import pandas_ta as ta
 
 
 def add_indicators(df: pd.DataFrame, ema_fast: int, ema_slow: int, rsi_period: int) -> pd.DataFrame:
-    """Add EMA fast, EMA slow, and RSI columns to a copy of the dataframe."""
+    """Add EMA fast, EMA slow, RSI and ADX columns to a copy of the dataframe."""
+    import config
     df = df.copy()
     df[f"ema_{ema_fast}"] = ta.ema(df["close"], length=ema_fast)
     df[f"ema_{ema_slow}"] = ta.ema(df["close"], length=ema_slow)
     df["rsi"] = ta.rsi(df["close"], length=rsi_period)
+    # ADX — mesure la force de la tendance (> ADX_TREND_MIN = marché directionnel)
+    adx_df = ta.adx(df["high"], df["low"], df["close"], length=config.ADX_PERIOD)
+    if adx_df is not None:
+        df["adx"] = adx_df[f"ADX_{config.ADX_PERIOD}"]
     return df
 
 

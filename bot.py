@@ -21,6 +21,7 @@ import config
 from exchange.client import BinanceClient
 from learning.analyzer import analyze_and_adapt
 from learning.journal import record_entry, record_exit
+from risk.manager import update_equity
 from notifications.telegram_bot import send_error, send_status, send_trade_alert
 from risk.manager import calculate_position_size, calculate_stop_loss, update_trailing_stop
 from strategy.indicators import get_indicator_context
@@ -232,6 +233,10 @@ def main():
 
     while True:
         try:
+            # Met à jour l'équité avant chaque cycle (nécessaire pour le DD scaling)
+            current_balance = client.get_usdt_balance()
+            update_equity(current_balance)
+
             for symbol in config.TRADING_PAIRS:
                 process_pair(client, symbol, positions)
             save_state(positions)

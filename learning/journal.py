@@ -86,6 +86,12 @@ def record_exit(
         pnl_usdt = (exit_price - trade["entry_price"]) * trade["amount"]
         pnl_pct = (exit_price / trade["entry_price"] - 1) * 100
 
+        # Frais aller + retour (0.1 % × 2 = 0.2 % de la valeur de position)
+        import config as _cfg
+        fees = trade["entry_price"] * trade["amount"] * _cfg.FEE_RATE * 2
+        pnl_net_usdt = pnl_usdt - fees
+        pnl_net_pct = pnl_net_usdt / (trade["entry_price"] * trade["amount"]) * 100
+
         trade.update({
             "status": "closed",
             "exit_time": now.isoformat(),
@@ -93,8 +99,11 @@ def record_exit(
             "exit_reason": exit_reason,
             "pnl_usdt": round(pnl_usdt, 4),
             "pnl_pct": round(pnl_pct, 4),
+            "fees_usdt": round(fees, 4),
+            "pnl_net_usdt": round(pnl_net_usdt, 4),
+            "pnl_net_pct": round(pnl_net_pct, 4),
             "duration_hours": round(duration_h, 2),
-            "outcome": "win" if pnl_usdt > 0 else "loss",
+            "outcome": "win" if pnl_net_usdt > 0 else "loss",  # basé sur PnL NET
         })
         logger.info(
             f"[Journal] Fermeture enregistrée : {trade_id}  "

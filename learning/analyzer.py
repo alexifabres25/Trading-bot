@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 PREMATURE_STOP_HOURS = 4      # stop en < 4h = trop serré
 HIGH_RSI_ENTRY = 62           # RSI > 62 = proche surachat
 WEAK_EMA_SPREAD = 0.3         # spread < 0.3% = croisement faible
-MIN_TRADES_TO_ANALYZE = 5     # attendre 5 trades fermés avant d'analyser
+MIN_TRADES_TO_ANALYZE = 30    # minimum 30 trades pour éviter le surapprentissage
 
 # ── Limites d'adaptation (garde-fous) ─────────────────────────────────────────
 TRAIL_STOP_MIN = 0.015        # 1.5% minimum
@@ -89,7 +89,7 @@ def analyze_and_adapt(symbol: str) -> dict:
         )
         return {}
 
-    recent = closed[-20:]  # fenêtre glissante sur les 20 derniers trades
+    recent = closed[-50:]  # fenêtre glissante sur les 50 derniers trades (anti-surapprentissage)
     stats = _stats(recent)
     losses = [t for t in recent if t.get("outcome") == "loss"]
 

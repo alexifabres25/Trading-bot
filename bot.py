@@ -19,8 +19,11 @@ from pathlib import Path
 
 import config
 from exchange.client import BinanceClient
+from learning.analyzer import analyze_and_adapt
+from learning.journal import record_entry, record_exit
 from notifications.telegram_bot import send_error, send_status, send_trade_alert
 from risk.manager import calculate_position_size, calculate_stop_loss, update_trailing_stop
+from strategy.indicators import get_indicator_context
 from strategy.signal import BUY, HOLD, SELL, generate_1h_signal, get_4h_trend
 
 # ── Logging ────────────────────────────────────────────────────────────────────
@@ -99,13 +102,21 @@ def process_pair(client: BinanceClient, symbol: str, positions: dict):
     # On entre si la tendance 4h est haussière ou neutre (on évite d'acheter en bear)
     if not position and signal_1h == BUY and trend_4h != "bear":
         logger.info(f"[{symbol}] Signal BUY confirmé (tendance 4h={trend_4h})")
-        _open_position(client, symbol, price, positions)
+        ctx = get_indicator_context(df_1h, config.EMA_FAST, config.EMA_SLOW, config.RSI_PERIOD)
+        _open_position(client, symbol, price, positions, trend_4h, ctx)
         return
 
     logger.info(f"[{symbol}] Aucune action — position={'ouverte' if position else 'fermée'}")
 
 
-def _open_position(client: BinanceClient, symbol: str, price: float, positions: dict):
+def _open_position(
+    client: BinanceClient,
+    symbol: str,
+    price: float,
+    positions: dict,
+    trend_4h: str,
+    indicator_ctx: dict,
+):
     try:
         usdt_balance = client.get_usdt_balance()
         qty = calculate_position_size(price, usdt_balance)
@@ -122,6 +133,17 @@ def _open_position(client: BinanceClient, symbol: str, price: float, positions: 
         filled_price = float(order.get("average") or order.get("price") or price)
         stop_loss = calculate_stop_loss(filled_price)
 
+        # Enregistre dans le journal avec le contexte complet des indicateurs
+        trade_id = record_entry(
+            symbol=symbol,
+            entry_price=filled_price,
+            amount=qty,
+            stop_loss=stop_loss,
+            rsi=indicator_ctx.get("rsi", 50.0),
+            ema_spread_pct=indicator_ctx.get("ema_spread_pct", 0.0),
+            trend_4h=trend_4h,
+        )
+
         positions[symbol] = {
             "side": "long",
             "entry_price": filled_price,
@@ -129,6 +151,7 @@ def _open_position(client: BinanceClient, symbol: str, price: float, positions: 
             "stop_loss": stop_loss,
             "entry_time": datetime.now(timezone.utc).isoformat(),
             "dry_run": config.DRY_RUN,
+            "trade_id": trade_id,
         }
 
         send_trade_alert(
@@ -158,6 +181,10 @@ def _close_position(
         pnl = (price - position["entry_price"]) * position["amount"]
         pnl_pct = (price / position["entry_price"] - 1) * 100
 
+        # Enregistre la sortie dans le journal
+        if trade_id := position.get("trade_id"):
+            record_exit(trade_id, price, reason)
+
         send_trade_alert(
             "SELL (simulation)" if config.DRY_RUN else "SELL",
             symbol, price, position["amount"],
@@ -171,6 +198,10 @@ def _close_position(
             f"[{symbol}] Position fermée  pnl={pnl:+.4f} USDT ({pnl_pct:+.2f} %)"
         )
         del positions[symbol]
+
+        # Analyse post-trade : détecte les erreurs et adapte les paramètres
+        analyze_and_adapt(symbol)
+
     except Exception as exc:
         logger.error(f"[{symbol}] Erreur fermeture position : {exc}", exc_info=True)
         send_error(f"Impossible de vendre {symbol} : {exc}")

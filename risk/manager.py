@@ -121,6 +121,47 @@ def get_kelly_risk_pct() -> float:
     return result
 
 
+# ── Multiplicateur progressif sur les pertes ──────────────────────────────────
+
+def get_risk_multiplier() -> float:
+    """Retourne le multiplicateur de risque courant (persistant entre sessions)."""
+    state = _load_equity_state()
+    return state.get("risk_multiplier", 1.0)
+
+
+def update_risk_multiplier(outcome: str):
+    """
+    Ajuste le multiplicateur après chaque trade.
+
+    Perte → ×(1 - 0.10) = ×0.90  (risque réduit de 10%)
+    Gain  → ×(1 + 0.05) = ×1.05  (récupération progressive de 5%)
+
+    Exemple avec risque de base 1% :
+        Perte → 0.90% → Perte → 0.81% → Perte → 0.73%
+        Gain  → 0.76% → Gain  → 0.80% → Gain  → 0.84%...
+        (jamais au-dessus de 1%, jamais en-dessous de 0.20%)
+    """
+    state = _load_equity_state()
+    current = state.get("risk_multiplier", 1.0)
+
+    if outcome == "loss":
+        new = current * (1 - config.LOSS_RISK_REDUCTION)
+        logger.warning(
+            f"[Multiplicateur] Perte → {current:.3f} × 0.90 = {new:.3f}  "
+            f"(risque effectif ×{new:.2f})"
+        )
+    else:
+        new = current * (1 + config.WIN_RISK_RECOVERY)
+        logger.info(
+            f"[Multiplicateur] Gain → {current:.3f} × 1.05 = {new:.3f}  "
+            f"(récupération progressive)"
+        )
+
+    new = max(config.RISK_MULTIPLIER_MIN, min(new, config.RISK_MULTIPLIER_MAX))
+    state["risk_multiplier"] = round(new, 6)
+    _save_equity_state(state)
+
+
 # ── Drawdown scaling ───────────────────────────────────────────────────────────
 
 def get_dynamic_risk_pct() -> float:
@@ -128,13 +169,24 @@ def get_dynamic_risk_pct() -> float:
     Risque par trade final = Kelly × DD scaling.
 
     Paliers (calqués sur TrendWin EA) :
-        DD < 2 %  → risque Kelly plein
-        DD 2–4 %  → min(Kelly, 0.75 %)   Tier 1
-        DD 4–6 %  → min(Kelly, 0.50 %)   Tier 2
-        DD 6–?%  → min(Kelly, 0.25 %)   Tier 3
-        DD > 6 %  → 0.10 %               Mode survie
+        DD < 2 %  → risque Kelly × multiplicateur
+        DD 2–4 %  → min(Kelly × multiplicateur, 0.75 %)   Tier 1
+        DD 4–6 %  → min(Kelly × multiplicateur, 0.50 %)   Tier 2
+        DD 6–?%  → min(Kelly × multiplicateur, 0.25 %)   Tier 3
+        DD > 6 %  → 0.10 %                                Mode survie
     """
-    base_risk = get_kelly_risk_pct()
+    # 1. Kelly depuis le track record réel
+    kelly_risk = get_kelly_risk_pct()
+
+    # 2. Multiplicateur progressif sur pertes/gains (-10% par perte, +5% par gain)
+    multiplier = get_risk_multiplier()
+    base_risk = kelly_risk * multiplier
+
+    if multiplier < 1.0:
+        logger.info(
+            f"[Multiplicateur] Kelly={kelly_risk:.2%} × {multiplier:.3f} "
+            f"= {base_risk:.2%}"
+        )
 
     if not config.DD_SCALING_ENABLED:
         return base_risk

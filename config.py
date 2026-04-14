@@ -37,6 +37,16 @@ KELLY_LOOKBACK: int = int(os.getenv("KELLY_LOOKBACK", "100"))   # nb trades pour
 RISK_MAX_CAP: float = float(os.getenv("RISK_MAX_CAP", "0.02"))  # plafond 2 % quoi qu'il arrive
 RISK_MIN_FLOOR: float = float(os.getenv("RISK_MIN_FLOOR", "0.001"))  # plancher 0.1 %
 
+# ── Multiplicateur progressif sur les pertes ──────────────────────────────────
+# Après chaque trade perdant  : risque × (1 - LOSS_RISK_REDUCTION)  → -10%
+# Après chaque trade gagnant  : risque × (1 + WIN_RISK_RECOVERY)    → +5%
+# Exemple : risque de base 1%
+#   Perte → 0.90%  →  perte → 0.81%  →  gain → 0.85%  →  gain → 0.89%...
+LOSS_RISK_REDUCTION: float = float(os.getenv("LOSS_RISK_REDUCTION", "0.10"))  # -10% / perte
+WIN_RISK_RECOVERY: float = float(os.getenv("WIN_RISK_RECOVERY", "0.05"))      # +5% / gain
+RISK_MULTIPLIER_MIN: float = 0.20   # plancher : 20% du risque de base (évite de trop écraser)
+RISK_MULTIPLIER_MAX: float = 1.00   # plafond  : jamais au-dessus du risque de base
+
 # ── Drawdown-based risk scaling ────────────────────────────────────────────────
 # Réduit progressivement le risque par palier quand le bot est en drawdown.
 # Valeurs calquées sur les screenshots MetaTrader (TrendWin EA).

@@ -22,7 +22,7 @@ from exchange.client import BinanceClient
 from exchange.sync import reconcile
 from learning.analyzer import analyze_and_adapt
 from learning.journal import record_entry, record_exit
-from risk.manager import update_equity
+from risk.manager import update_equity, update_risk_multiplier
 from notifications.telegram_bot import send_error, send_status, send_trade_alert
 from risk.manager import calculate_position_size, calculate_stop_loss, update_trailing_stop
 from strategy.indicators import get_indicator_context
@@ -207,6 +207,10 @@ def _close_position(
             f"[{symbol}] Position fermée  pnl={pnl:+.4f} USDT ({pnl_pct:+.2f} %)"
         )
         del positions[symbol]
+
+        # Ajuste le multiplicateur de risque (-10% si perte, +5% si gain)
+        outcome = "win" if pnl > 0 else "loss"
+        update_risk_multiplier(outcome)
 
         # Analyse post-trade : détecte les erreurs et adapte les paramètres
         analyze_and_adapt(symbol)

@@ -1,0 +1,15 @@
+.git
+.env
+.env.aggressive
+.env.conservative
+__pycache__
+*.pyc
+*.pyo
+*.log
+state.json
+state_*.json
+health.json
+equity.json
+journal.json
+venv/
+.venv/

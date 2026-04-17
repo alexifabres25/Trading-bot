@@ -1,28 +1,101 @@
+import numpy as np
 import pandas as pd
-import pandas_ta as ta
 
 
-def add_indicators(df: pd.DataFrame, ema_fast: int, ema_slow: int, rsi_period: int) -> pd.DataFrame:
-    """Add EMA fast, EMA slow, RSI and ADX columns to a copy of the dataframe."""
+# ── Implémentations pures pandas/numpy ────────────────────────────────────────
+
+def _ema(series: pd.Series, period: int) -> pd.Series:
+    return series.ewm(span=period, adjust=False).mean()
+
+
+def _rsi(series: pd.Series, period: int) -> pd.Series:
+    delta = series.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.ewm(com=period - 1, min_periods=period).mean()
+    avg_loss = loss.ewm(com=period - 1, min_periods=period).mean()
+    rs = avg_gain / avg_loss
+    return 100 - (100 / (1 + rs))
+
+
+def _atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int) -> pd.Series:
+    tr = pd.concat([
+        high - low,
+        (high - close.shift()).abs(),
+        (low - close.shift()).abs(),
+    ], axis=1).max(axis=1)
+    return tr.ewm(com=period - 1, min_periods=period).mean()
+
+
+def _adx(high: pd.Series, low: pd.Series, close: pd.Series, period: int) -> pd.Series:
+    up = high.diff()
+    down = -low.diff()
+    plus_dm = up.where((up > down) & (up > 0), 0.0)
+    minus_dm = down.where((down > up) & (down > 0), 0.0)
+    atr = _atr(high, low, close, period)
+    plus_di = 100 * plus_dm.ewm(com=period - 1, min_periods=period).mean() / atr
+    minus_di = 100 * minus_dm.ewm(com=period - 1, min_periods=period).mean() / atr
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di + 1e-10)
+    return dx.ewm(com=period - 1, min_periods=period).mean()
+
+
+def _supertrend(
+    high: pd.Series, low: pd.Series, close: pd.Series,
+    period: int, multiplier: float,
+) -> tuple:
+    atr = _atr(high, low, close, period)
+    hl2 = (high + low) / 2
+    raw_upper = (hl2 + multiplier * atr).to_numpy()
+    raw_lower = (hl2 - multiplier * atr).to_numpy()
+    closes = close.to_numpy()
+    n = len(closes)
+    upper = raw_upper.copy()
+    lower = raw_lower.copy()
+    direction = np.ones(n, dtype=int)
+    stop = np.full(n, np.nan)
+    for i in range(1, n):
+        lower[i] = (
+            raw_lower[i]
+            if raw_lower[i] > lower[i - 1] or closes[i - 1] < lower[i - 1]
+            else lower[i - 1]
+        )
+        upper[i] = (
+            raw_upper[i]
+            if raw_upper[i] < upper[i - 1] or closes[i - 1] > upper[i - 1]
+            else upper[i - 1]
+        )
+        if closes[i] > upper[i - 1]:
+            direction[i] = 1
+        elif closes[i] < lower[i - 1]:
+            direction[i] = -1
+        else:
+            direction[i] = direction[i - 1]
+        stop[i] = lower[i] if direction[i] == 1 else upper[i]
+    return (
+        pd.Series(stop, index=close.index),
+        pd.Series(direction, index=close.index),
+    )
+
+
+# ── API publique — indicateurs de base ────────────────────────────────────────
+
+def add_indicators(
+    df: pd.DataFrame, ema_fast: int, ema_slow: int, rsi_period: int
+) -> pd.DataFrame:
+    """Ajoute EMA fast, EMA slow, RSI et ADX au dataframe."""
     import config
     df = df.copy()
-    df[f"ema_{ema_fast}"] = ta.ema(df["close"], length=ema_fast)
-    df[f"ema_{ema_slow}"] = ta.ema(df["close"], length=ema_slow)
-    df["rsi"] = ta.rsi(df["close"], length=rsi_period)
-    # ADX — mesure la force de la tendance (> ADX_TREND_MIN = marché directionnel)
-    adx_df = ta.adx(df["high"], df["low"], df["close"], length=config.ADX_PERIOD)
-    if adx_df is not None:
-        df["adx"] = adx_df[f"ADX_{config.ADX_PERIOD}"]
+    df[f"ema_{ema_fast}"] = _ema(df["close"], ema_fast)
+    df[f"ema_{ema_slow}"] = _ema(df["close"], ema_slow)
+    df["rsi"] = _rsi(df["close"], rsi_period)
+    df["adx"] = _adx(df["high"], df["low"], df["close"], config.ADX_PERIOD)
     return df
 
 
 def get_indicator_context(
     df: pd.DataFrame, ema_fast: int, ema_slow: int, rsi_period: int
 ) -> dict:
-    """
-    Retourne les valeurs actuelles des indicateurs pour le journal.
-    Appelé au moment de l'entrée pour capturer le contexte du signal.
-    """
+    """Retourne les valeurs actuelles des indicateurs pour le journal."""
     df = add_indicators(df, ema_fast, ema_slow, rsi_period)
     df = df.dropna()
     if df.empty:
@@ -36,44 +109,27 @@ def get_indicator_context(
 
 
 def add_supertrend(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Ajoute le Supertrend au dataframe.
-    Colonnes ajoutées :
-      - supertrend_stop  : niveau du stop dynamique (suit la volatilité ATR)
-      - supertrend_dir   : direction (1 = haussier, -1 = baissier)
-
-    Avantage vs trailing stop fixe :
-      Marché calme (ATR faible) → stop serré → risque réduit
-      Marché agité (ATR élevé)  → stop large → moins de faux déclenchements
-    """
+    """Ajoute supertrend_stop et supertrend_dir au dataframe."""
     import config as _cfg
     df = df.copy()
-    st = ta.supertrend(
+    stop, direction = _supertrend(
         df["high"], df["low"], df["close"],
-        length=_cfg.SUPERTREND_PERIOD,
-        multiplier=_cfg.SUPERTREND_MULTIPLIER,
+        _cfg.SUPERTREND_PERIOD, _cfg.SUPERTREND_MULTIPLIER,
     )
-    if st is not None and not st.empty:
-        col_dir = f"SUPERTd_{_cfg.SUPERTREND_PERIOD}_{_cfg.SUPERTREND_MULTIPLIER}"
-        col_l   = f"SUPERTl_{_cfg.SUPERTREND_PERIOD}_{_cfg.SUPERTREND_MULTIPLIER}"
-        col_s   = f"SUPERTs_{_cfg.SUPERTREND_PERIOD}_{_cfg.SUPERTREND_MULTIPLIER}"
-        if col_dir in st.columns:
-            df["supertrend_dir"]  = st[col_dir]
-            df["supertrend_stop"] = st[col_l].where(st[col_dir] == 1, st[col_s])
+    df["supertrend_stop"] = stop
+    df["supertrend_dir"] = direction
     return df
 
 
 def get_supertrend_stop(df: pd.DataFrame) -> float | None:
     """Retourne le niveau du stop Supertrend sur la dernière bougie confirmée."""
     df = add_supertrend(df)
-    if "supertrend_stop" not in df.columns:
-        return None
     val = df["supertrend_stop"].dropna()
     return float(val.iloc[-1]) if not val.empty else None
 
 
 def get_ema_trend(df: pd.DataFrame, ema_fast: int, ema_slow: int) -> str:
-    """Return 'bull', 'bear', or 'neutral' based on EMA alignment on the last candle."""
+    """Retourne 'bull', 'bear' ou 'neutral' selon l'alignement EMA."""
     fast = df[f"ema_{ema_fast}"].iloc[-1]
     slow = df[f"ema_{ema_slow}"].iloc[-1]
     if fast > slow:
@@ -81,3 +137,43 @@ def get_ema_trend(df: pd.DataFrame, ema_fast: int, ema_slow: int) -> str:
     if fast < slow:
         return "bear"
     return "neutral"
+
+
+# ── Nouveaux filtres ───────────────────────────────────────────────────────────
+
+def is_volatility_extreme(df: pd.DataFrame) -> bool:
+    """
+    Retourne True si la volatilité actuelle est anormalement élevée.
+    ATR courant > ATR_FILTER_MULTIPLIER × ATR moyen sur ATR_FILTER_LOOKBACK bougies.
+    Protège contre les entrées pendant les news macro ou liquidations en cascade.
+    """
+    import config as _cfg
+    atr = _atr(df["high"], df["low"], df["close"], 14)
+    atr_clean = atr.dropna()
+    if len(atr_clean) < _cfg.ATR_FILTER_LOOKBACK:
+        return False
+    current = float(atr_clean.iloc[-1])
+    avg = float(atr_clean.iloc[-_cfg.ATR_FILTER_LOOKBACK:].mean())
+    extreme = current > avg * _cfg.ATR_FILTER_MULTIPLIER
+    if extreme:
+        import logging
+        logging.getLogger(__name__).warning(
+            f"[ATR] Volatilité extrême : ATR={current:.6f} > {_cfg.ATR_FILTER_MULTIPLIER}× moy={avg:.6f}"
+        )
+    return extreme
+
+
+def get_weekly_trend(df_weekly: pd.DataFrame) -> str:
+    """
+    Filtre macro : prix au-dessus/en-dessous de l'EMA 200 hebdomadaire.
+    Retourne 'bull' (tendance haussière structurelle) ou 'bear'.
+    N'achète pas si 'bear' — évite de trader long dans un marché 2022-style.
+    """
+    import config as _cfg
+    ema200 = _ema(df_weekly["close"], _cfg.EMA_WEEKLY_PERIOD)
+    ema200_clean = ema200.dropna()
+    if ema200_clean.empty:
+        return "bull"  # pas assez de données → on ne bloque pas
+    last_close = float(df_weekly["close"].iloc[-1])
+    last_ema200 = float(ema200_clean.iloc[-1])
+    return "bull" if last_close > last_ema200 else "bear"

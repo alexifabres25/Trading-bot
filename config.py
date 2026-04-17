@@ -100,6 +100,26 @@ API_BASE_DELAY: float = 2.0           # délais : 2s → 4s → 8s → 16s
 API_CIRCUIT_BREAKER_THRESHOLD: int = 5     # N échecs → circuit ouvert
 API_CIRCUIT_BREAKER_TIMEOUT: float = 120.0 # secondes avant réessai
 
+# ── Take Profit dynamique (ratio risque/récompense) ───────────────────────────
+# TP = entry + TAKE_PROFIT_RATIO × stop_distance  →  2:1 par défaut
+TAKE_PROFIT_ENABLED: bool = os.getenv("TAKE_PROFIT_ENABLED", "true").lower() == "true"
+TAKE_PROFIT_RATIO: float = float(os.getenv("TAKE_PROFIT_RATIO", "2.0"))
+
+# ── Filtre ATR — bloque les entrées en volatilité extrême ─────────────────────
+# Evite d'acheter quand une bougie anormale vient de se produire (news macro,
+# liquidation en cascade). ATR actuel > ATR_FILTER_MULTIPLIER × ATR moyen → skip.
+ATR_FILTER_ENABLED: bool = os.getenv("ATR_FILTER_ENABLED", "true").lower() == "true"
+ATR_FILTER_MULTIPLIER: float = float(os.getenv("ATR_FILTER_MULTIPLIER", "2.0"))
+ATR_FILTER_LOOKBACK: int = 50   # bougies pour calculer l'ATR moyen de référence
+
+# ── Filtre tendance Weekly — EMA 200 (1W) ─────────────────────────────────────
+# N'achète que si le prix est au-dessus de l'EMA 200 hebdomadaire.
+# Évite d'entrer long dans un marché structurellement baissier (ex: 2022).
+WEEKLY_TREND_FILTER: bool = os.getenv("WEEKLY_TREND_FILTER", "true").lower() == "true"
+TIMEFRAME_WEEKLY: str = "1w"
+EMA_WEEKLY_PERIOD: int = 200
+CANDLES_WEEKLY: int = 210       # 210 semaines ≈ 4 ans pour calculer EMA 200
+
 # ── Boucle principale ──────────────────────────────────────────────────────────
 LOOP_INTERVAL: int = int(os.getenv("LOOP_INTERVAL", "300"))
 STATE_FILE: str = os.getenv("STATE_FILE", "state.json")

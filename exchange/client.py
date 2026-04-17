@@ -51,11 +51,18 @@ class BinanceClient:
             "apiKey": config.BINANCE_API_KEY,
             "secret": config.BINANCE_SECRET,
             "enableRateLimit": True,
-            "options": {"defaultType": "spot"},
+            "options": {
+                "defaultType": "spot",
+                "recvWindow": 60000,
+                "adjustForTimeDifference": True,
+            },
         })
         if config.USE_TESTNET:
             self.exchange.set_sandbox_mode(True)
             logger.info("Mode TESTNET activé")
+        # Synchronise l'horloge locale avec Binance (corrige l'erreur -1021)
+        self.exchange.load_time_difference()
+        logger.info("[Binance] Synchronisation horloge effectuée")
         if self.dry_run:
             logger.info("Mode DRY RUN activé — aucun ordre réel")
         elif not config.USE_TESTNET:

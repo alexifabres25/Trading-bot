@@ -169,6 +169,7 @@ def maybe_send_daily_report():
 def _send_report(state: dict, today: str):
     from learning.journal import load_journal
     from risk.manager import _load_equity_state, get_current_drawdown
+    from news.sentiment import get_sentiment_summary
 
     equity_state = _load_equity_state()
     current_equity = equity_state.get("current_equity", config.CAPITAL)
@@ -201,6 +202,8 @@ def _send_report(state: dict, today: str):
         else f"Pic historique : ✅ `{peak:.2f} USDT`",
         f"",
         f"Win rate global: `{win_rate:.0f}%` sur {len(all_closed)} trades",
+        f"",
+        get_sentiment_summary(),
     ]
 
     if state.get("paused_until"):

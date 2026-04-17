@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 
-# ── Implémentations pures pandas/numpy — remplace pandas-ta ───────────────────
+# ── Implémentations pures pandas/numpy ────────────────────────────────────────
 
 def _ema(series: pd.Series, period: int) -> pd.Series:
     return series.ewm(span=period, adjust=False).mean()
@@ -45,17 +45,14 @@ def _supertrend(
 ) -> tuple:
     atr = _atr(high, low, close, period)
     hl2 = (high + low) / 2
-
     raw_upper = (hl2 + multiplier * atr).to_numpy()
     raw_lower = (hl2 - multiplier * atr).to_numpy()
     closes = close.to_numpy()
-
     n = len(closes)
     upper = raw_upper.copy()
     lower = raw_lower.copy()
     direction = np.ones(n, dtype=int)
     stop = np.full(n, np.nan)
-
     for i in range(1, n):
         lower[i] = (
             raw_lower[i]
@@ -74,14 +71,13 @@ def _supertrend(
         else:
             direction[i] = direction[i - 1]
         stop[i] = lower[i] if direction[i] == 1 else upper[i]
-
     return (
         pd.Series(stop, index=close.index),
         pd.Series(direction, index=close.index),
     )
 
 
-# ── API publique (signatures inchangées) ──────────────────────────────────────
+# ── API publique — indicateurs de base ────────────────────────────────────────
 
 def add_indicators(
     df: pd.DataFrame, ema_fast: int, ema_slow: int, rsi_period: int
@@ -141,3 +137,43 @@ def get_ema_trend(df: pd.DataFrame, ema_fast: int, ema_slow: int) -> str:
     if fast < slow:
         return "bear"
     return "neutral"
+
+
+# ── Nouveaux filtres ───────────────────────────────────────────────────────────
+
+def is_volatility_extreme(df: pd.DataFrame) -> bool:
+    """
+    Retourne True si la volatilité actuelle est anormalement élevée.
+    ATR courant > ATR_FILTER_MULTIPLIER × ATR moyen sur ATR_FILTER_LOOKBACK bougies.
+    Protège contre les entrées pendant les news macro ou liquidations en cascade.
+    """
+    import config as _cfg
+    atr = _atr(df["high"], df["low"], df["close"], 14)
+    atr_clean = atr.dropna()
+    if len(atr_clean) < _cfg.ATR_FILTER_LOOKBACK:
+        return False
+    current = float(atr_clean.iloc[-1])
+    avg = float(atr_clean.iloc[-_cfg.ATR_FILTER_LOOKBACK:].mean())
+    extreme = current > avg * _cfg.ATR_FILTER_MULTIPLIER
+    if extreme:
+        import logging
+        logging.getLogger(__name__).warning(
+            f"[ATR] Volatilité extrême : ATR={current:.6f} > {_cfg.ATR_FILTER_MULTIPLIER}× moy={avg:.6f}"
+        )
+    return extreme
+
+
+def get_weekly_trend(df_weekly: pd.DataFrame) -> str:
+    """
+    Filtre macro : prix au-dessus/en-dessous de l'EMA 200 hebdomadaire.
+    Retourne 'bull' (tendance haussière structurelle) ou 'bear'.
+    N'achète pas si 'bear' — évite de trader long dans un marché 2022-style.
+    """
+    import config as _cfg
+    ema200 = _ema(df_weekly["close"], _cfg.EMA_WEEKLY_PERIOD)
+    ema200_clean = ema200.dropna()
+    if ema200_clean.empty:
+        return "bull"  # pas assez de données → on ne bloque pas
+    last_close = float(df_weekly["close"].iloc[-1])
+    last_ema200 = float(ema200_clean.iloc[-1])
+    return "bull" if last_close > last_ema200 else "bear"

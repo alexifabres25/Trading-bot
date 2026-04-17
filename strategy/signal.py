@@ -1,7 +1,7 @@
 import pandas as pd
 
 import config
-from strategy.indicators import add_indicators, get_ema_trend
+from strategy.indicators import add_indicators, get_ema_trend, get_weekly_trend as _get_weekly_trend
 
 BUY = "BUY"
 SELL = "SELL"
@@ -50,10 +50,12 @@ def generate_1h_signal(df: pd.DataFrame) -> str:
 
 
 def get_4h_trend(df: pd.DataFrame) -> str:
-    """
-    Filtre de tendance 4h basé sur l'alignement EMA 9 / EMA 21.
-    Retourne 'bull', 'bear', ou 'neutral'.
-    """
+    """Filtre de tendance 4h — alignement EMA 9/21. Retourne 'bull', 'bear' ou 'neutral'."""
     df = add_indicators(df, config.EMA_FAST, config.EMA_SLOW, config.RSI_PERIOD)
     df = df.dropna()
     return get_ema_trend(df, config.EMA_FAST, config.EMA_SLOW)
+
+
+def get_weekly_trend(df: pd.DataFrame) -> str:
+    """Filtre macro — EMA 200 weekly. Retourne 'bull' ou 'bear'."""
+    return _get_weekly_trend(df)

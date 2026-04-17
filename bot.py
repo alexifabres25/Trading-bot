@@ -28,6 +28,7 @@ from learning.health import is_paused, maybe_send_daily_report, record_outcome
 from risk.manager import calculate_position_size, calculate_stop_loss, update_trailing_stop
 from strategy.indicators import get_indicator_context, get_supertrend_stop
 from strategy.signal import BUY, HOLD, SELL, generate_1h_signal, get_4h_trend
+from news.sentiment import should_block_buy
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -114,6 +115,11 @@ def process_pair(client: BinanceClient, symbol: str, positions: dict):
     # ── 4. Ouvrir une position sur signal BUY confirmé par la tendance 4h ─────
     # On entre si la tendance 4h est haussière ou neutre (on évite d'acheter en bear)
     if not position and signal_1h == BUY and trend_4h != "bear":
+        # Filtre sentiment : Fear & Greed + news CryptoPanic
+        blocked, reason = should_block_buy(symbol)
+        if blocked:
+            logger.info(f"[{symbol}] BUY bloqué par le sentiment — {reason}")
+            return
         logger.info(f"[{symbol}] Signal BUY confirmé (tendance 4h={trend_4h})")
         ctx = get_indicator_context(df_1h, config.EMA_FAST, config.EMA_SLOW, config.RSI_PERIOD)
         _open_position(client, symbol, price, positions, trend_4h, ctx)

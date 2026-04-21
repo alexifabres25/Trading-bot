@@ -75,7 +75,7 @@ DAILY_REPORT_HOUR: int = 8             # heure UTC du rapport Telegram quotidien
 
 # ── ADX — filtre de tendance (issu de la recherche algo trading) ───────────────
 ADX_PERIOD: int = 14
-ADX_TREND_MIN: int = int(os.getenv("ADX_TREND_MIN", "20"))  # ADX < 20 = marché en range, on n'entre pas
+ADX_TREND_MIN: int = int(os.getenv("ADX_TREND_MIN", "15"))  # ADX < 15 = marché en range, on n'entre pas
 
 # ── Stratégie ──────────────────────────────────────────────────────────────────
 TIMEFRAME_SHORT: str = os.getenv("TIMEFRAME_SHORT", "1h")
@@ -108,14 +108,14 @@ TAKE_PROFIT_RATIO: float = float(os.getenv("TAKE_PROFIT_RATIO", "2.0"))
 # ── Filtre ATR — bloque les entrées en volatilité extrême ─────────────────────
 # Evite d'acheter quand une bougie anormale vient de se produire (news macro,
 # liquidation en cascade). ATR actuel > ATR_FILTER_MULTIPLIER × ATR moyen → skip.
-ATR_FILTER_ENABLED: bool = os.getenv("ATR_FILTER_ENABLED", "true").lower() == "true"
+ATR_FILTER_ENABLED: bool = os.getenv("ATR_FILTER_ENABLED", "false").lower() == "true"
 ATR_FILTER_MULTIPLIER: float = float(os.getenv("ATR_FILTER_MULTIPLIER", "2.0"))
 ATR_FILTER_LOOKBACK: int = 50   # bougies pour calculer l'ATR moyen de référence
 
 # ── Filtre tendance Weekly — EMA 200 (1W) ─────────────────────────────────────
 # N'achète que si le prix est au-dessus de l'EMA 200 hebdomadaire.
 # Évite d'entrer long dans un marché structurellement baissier (ex: 2022).
-WEEKLY_TREND_FILTER: bool = os.getenv("WEEKLY_TREND_FILTER", "true").lower() == "true"
+WEEKLY_TREND_FILTER: bool = os.getenv("WEEKLY_TREND_FILTER", "false").lower() == "true"
 TIMEFRAME_WEEKLY: str = "1w"
 EMA_WEEKLY_PERIOD: int = 200
 CANDLES_WEEKLY: int = 210       # 210 semaines ≈ 4 ans pour calculer EMA 200

@@ -150,14 +150,19 @@ def process_pair(client: BinanceClient, symbol: str, positions: dict):
     """Analyse les signaux et gère la position pour une paire."""
     logger.info(f"[{symbol}] Analyse en cours...")
 
-    df_1h     = client.fetch_ohlcv(symbol, config.TIMEFRAME_SHORT, config.CANDLES_LIMIT)
-    df_4h     = client.fetch_ohlcv(symbol, config.TIMEFRAME_LONG, config.CANDLES_LIMIT)
-    df_weekly = client.fetch_ohlcv(symbol, config.TIMEFRAME_WEEKLY, config.CANDLES_WEEKLY)
+    df_1h = client.fetch_ohlcv(symbol, config.TIMEFRAME_SHORT, config.CANDLES_LIMIT)
+    df_4h = client.fetch_ohlcv(symbol, config.TIMEFRAME_LONG, config.CANDLES_LIMIT)
 
-    signal_1h    = generate_1h_signal(df_1h)
-    trend_4h     = get_4h_trend(df_4h)
-    trend_weekly = get_weekly_trend(df_weekly)
-    price        = client.get_current_price(symbol)
+    signal_1h = generate_1h_signal(df_1h)
+    trend_4h  = get_4h_trend(df_4h)
+    price     = client.get_current_price(symbol)
+
+    if config.WEEKLY_TREND_FILTER:
+        df_weekly    = client.fetch_ohlcv(symbol, config.TIMEFRAME_WEEKLY, config.CANDLES_WEEKLY)
+        trend_weekly = get_weekly_trend(df_weekly)
+    else:
+        df_weekly    = None
+        trend_weekly = "bull"  # filtre désactivé → on considère toujours haussier
 
     logger.info(
         f"[{symbol}]  signal 1h={signal_1h:<4}  "

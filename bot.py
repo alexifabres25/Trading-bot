@@ -29,9 +29,16 @@ from risk.manager import update_equity, update_risk_multiplier
 from notifications.telegram_bot import send_error, send_status, send_trade_alert
 from learning.health import is_paused, maybe_send_daily_report, record_outcome
 from risk.manager import calculate_position_size, calculate_stop_loss, update_trailing_stop
-from strategy.indicators import get_indicator_context, get_supertrend_stop, is_volatility_extreme
+from strategy.indicators import (
+    add_indicators, get_indicator_context, get_supertrend_stop, is_volatility_extreme,
+)
 from strategy.signal import BUY, HOLD, SELL, generate_1h_signal, get_4h_trend, get_weekly_trend
-from news.sentiment import should_block_buy
+from news.sentiment import get_fear_greed, should_block_buy
+
+# Rate-limit pour les notifications de diagnostic (1 par heure par symbole)
+_last_scan_ts: dict[str, float] = {}
+_last_block_ts: dict[str, float] = {}
+_NOTIF_COOLDOWN = 3600.0  # 1 heure
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -68,6 +75,75 @@ def _calculate_take_profit(entry_price: float) -> float:
     return round(entry_price + config.TAKE_PROFIT_RATIO * stop_distance, 8)
 
 
+# ── Diagnostic Telegram ────────────────────────────────────────────────────────
+
+def _send_market_scan(
+    symbol: str, price: float, signal_1h: str,
+    trend_4h: str, trend_weekly: str, df_1h,
+):
+    """Rapport horaire envoyé sur Telegram — montre l'état de chaque filtre."""
+    now = time.monotonic()
+    if now - _last_scan_ts.get(symbol, 0) < _NOTIF_COOLDOWN:
+        return
+    _last_scan_ts[symbol] = now
+
+    try:
+        df = add_indicators(df_1h, config.EMA_FAST, config.EMA_SLOW, config.RSI_PERIOD)
+        df = df.dropna()
+        if df.empty:
+            return
+        rsi = float(df["rsi"].iloc[-1])
+        adx = float(df["adx"].iloc[-1]) if "adx" in df.columns else 0.0
+        ema_f = float(df[f"ema_{config.EMA_FAST}"].iloc[-1])
+        ema_s = float(df[f"ema_{config.EMA_SLOW}"].iloc[-1])
+        spread = (ema_f - ema_s) / ema_s * 100
+
+        fg = get_fear_greed()
+        fg_txt = f"{fg['value']}/100 ({fg['label']})"
+
+        blockers = []
+        if signal_1h != BUY:
+            blockers.append(f"Signal 1h = `{signal_1h}` (pas de croisement EMA)")
+        if trend_4h == "bear":
+            blockers.append("Tendance 4h `bear`")
+        if trend_weekly != "bull":
+            blockers.append("Weekly EMA 200 `bear` ⛔ (bloque tous les achats)")
+        if adx < config.ADX_TREND_MIN:
+            blockers.append(f"ADX `{adx:.1f}` < {config.ADX_TREND_MIN} (marché en range)")
+        if fg["signal"] == "block":
+            blockers.append(f"Fear & Greed `{fg_txt}` (extrême)")
+
+        status_icon = "🟢" if not blockers else "🔴"
+        block_lines = "\n".join(f"  • {b}" for b in blockers) if blockers else "  • aucun blocage"
+
+        send_status(
+            f"📡 *Scan {symbol}* _(rapport horaire)_\n"
+            f"Prix      : `{price:.4f} USDT`\n"
+            f"Signal 1h : `{signal_1h}`  |  4h : `{trend_4h}`  |  Weekly : `{trend_weekly}`\n"
+            f"RSI       : `{rsi:.1f}`  |  ADX : `{adx:.1f}`  |  EMA spread : `{spread:+.3f}%`\n"
+            f"F&G Index : `{fg_txt}`\n"
+            f"{status_icon} *Statut* : {'Signal prêt' if not blockers else 'En attente'}\n"
+            f"*Blocages* :\n{block_lines}"
+        )
+    except Exception as exc:
+        logger.warning(f"[{symbol}] Erreur scan diagnostic : {exc}")
+
+
+def _notify_buy_blocked(symbol: str, price: float, blockers: list[str]):
+    """Telegram une fois par heure quand un BUY signal est actif mais bloqué."""
+    now = time.monotonic()
+    if now - _last_block_ts.get(symbol, 0) < _NOTIF_COOLDOWN:
+        return
+    _last_block_ts[symbol] = now
+
+    block_lines = "\n".join(f"  • {b}" for b in blockers)
+    send_status(
+        f"⚠️ *{symbol}* — Signal BUY actif mais bloqué\n"
+        f"Prix : `{price:.4f} USDT`\n"
+        f"*Raisons* :\n{block_lines}"
+    )
+
+
 # ── Logique par paire ──────────────────────────────────────────────────────────
 
 def process_pair(client: BinanceClient, symbol: str, positions: dict):
@@ -87,6 +163,9 @@ def process_pair(client: BinanceClient, symbol: str, positions: dict):
         f"[{symbol}]  signal 1h={signal_1h:<4}  "
         f"tendance 4h={trend_4h:<7}  weekly={trend_weekly:<4}  prix={price:.4f}"
     )
+
+    # Rapport horaire envoyé sur Telegram (visibilité sans accès aux logs Railway)
+    _send_market_scan(symbol, price, signal_1h, trend_4h, trend_weekly, df_1h)
 
     position = positions.get(symbol)
 
@@ -138,17 +217,25 @@ def process_pair(client: BinanceClient, symbol: str, positions: dict):
         return
 
     # ── 5. Ouvrir une position — tous les filtres doivent être verts ──────────
-    if not position and signal_1h == BUY and trend_4h != "bear" and trend_weekly == "bull":
-
-        # Filtre ATR — pas d'entrée en volatilité extrême
+    if not position and signal_1h == BUY:
+        # Collecte tous les blocages pour diagnostic transparent
+        blockers = []
+        if trend_4h == "bear":
+            blockers.append("Tendance 4h `bear` — EMA 9/21 bearish sur 4h")
+        if trend_weekly != "bull":
+            blockers.append(
+                f"Weekly EMA 200 `{trend_weekly}` — prix sous EMA 200 hebdo ⛔"
+            )
         if config.ATR_FILTER_ENABLED and is_volatility_extreme(df_1h):
-            logger.info(f"[{symbol}] BUY bloqué — volatilité ATR extrême")
-            return
+            blockers.append("Volatilité ATR extrême — bougie anormale détectée")
+        if not blockers:
+            blocked_sentiment, reason_sentiment = should_block_buy(symbol)
+            if blocked_sentiment:
+                blockers.append(f"Sentiment : {reason_sentiment}")
 
-        # Filtre sentiment — Fear & Greed + news CryptoPanic
-        blocked, reason = should_block_buy(symbol)
-        if blocked:
-            logger.info(f"[{symbol}] BUY bloqué par le sentiment — {reason}")
+        if blockers:
+            logger.info(f"[{symbol}] BUY bloqué — {' | '.join(blockers)}")
+            _notify_buy_blocked(symbol, price, blockers)
             return
 
         logger.info(
@@ -159,7 +246,7 @@ def process_pair(client: BinanceClient, symbol: str, positions: dict):
         _open_position(client, symbol, price, positions, trend_4h, ctx)
         return
 
-    logger.info(f"[{symbol}] Aucune action — position={'ouverte' if position else 'fermée'}")
+    logger.info(f"[{symbol}] Aucune action — signal={signal_1h}  position={'ouverte' if position else 'fermée'}")
 
 
 def _open_position(
@@ -297,6 +384,10 @@ def main():
         logger.info(f"{len(positions)} position(s) rechargée(s) depuis {config.STATE_FILE}")
         positions = reconcile(client, positions)
         save_state(positions)
+
+    # Force le premier rapport dès le démarrage (ignore le cooldown)
+    for sym in config.TRADING_PAIRS:
+        _last_scan_ts[sym] = 0.0
 
     while True:
         try:

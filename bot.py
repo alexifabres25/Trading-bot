@@ -405,7 +405,15 @@ def main():
                 )
             else:
                 current_balance = client.get_usdt_balance()
-                update_equity(current_balance)
+                # Équité totale = USDT libre + valeur des positions ouvertes
+                total_equity = current_balance
+                for sym, pos in positions.items():
+                    try:
+                        sym_price = client.get_current_price(sym)
+                        total_equity += pos["amount"] * sym_price
+                    except Exception:
+                        total_equity += pos["amount"] * pos["entry_price"]
+                update_equity(total_equity)
 
                 for symbol in config.TRADING_PAIRS:
                     process_pair(client, symbol, positions)

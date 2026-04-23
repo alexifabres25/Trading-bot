@@ -122,5 +122,12 @@ CANDLES_WEEKLY: int = 210       # 210 semaines ≈ 4 ans pour calculer EMA 200
 
 # ── Boucle principale ──────────────────────────────────────────────────────────
 LOOP_INTERVAL: int = int(os.getenv("LOOP_INTERVAL", "300"))
-STATE_FILE: str = os.getenv("STATE_FILE", "state.json")
-EQUITY_FILE: str = os.getenv("EQUITY_FILE", "equity.json")
+
+# ── Persistance des données (Railway Volume) ───────────────────────────────────
+# DATA_DIR pointe vers le volume Railway (/data) en production,
+# ou le dossier courant (.) en local/dev.
+DATA_DIR: str = os.getenv("DATA_DIR", ".")
+STATE_FILE: str  = f"{DATA_DIR}/state.json"
+EQUITY_FILE: str = f"{DATA_DIR}/equity.json"
+JOURNAL_FILE: str = f"{DATA_DIR}/journal.json"
+HEALTH_FILE: str  = f"{DATA_DIR}/health.json"

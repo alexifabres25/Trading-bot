@@ -63,7 +63,9 @@ def load_state() -> dict:
 
 
 def save_state(state: dict):
-    with open(config.STATE_FILE, "w") as f:
+    path = Path(config.STATE_FILE)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
         json.dump(state, f, indent=2, default=str)
 
 

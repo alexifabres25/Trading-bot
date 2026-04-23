@@ -39,7 +39,9 @@ def _load_equity_state() -> dict:
 
 
 def _save_equity_state(state: dict):
-    with open(config.EQUITY_FILE, "w") as f:
+    path = Path(config.EQUITY_FILE)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
         json.dump(state, f, indent=2)
 
 

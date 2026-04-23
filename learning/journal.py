@@ -15,11 +15,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
-JOURNAL_FILE = "journal.json"
+
+
+def _journal_path():
+    import config
+    return Path(config.JOURNAL_FILE)
 
 
 def load_journal() -> list[dict]:
-    path = Path(JOURNAL_FILE)
+    path = _journal_path()
     if path.exists():
         with open(path) as f:
             return json.load(f)
@@ -27,7 +31,9 @@ def load_journal() -> list[dict]:
 
 
 def save_journal(entries: list[dict]):
-    with open(JOURNAL_FILE, "w") as f:
+    path = _journal_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
         json.dump(entries, f, indent=2, default=str)
 
 

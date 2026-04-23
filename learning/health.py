@@ -20,13 +20,18 @@ import config
 from notifications.telegram_bot import send_status
 
 logger = logging.getLogger(__name__)
-HEALTH_FILE = "health.json"
+
+
+def _health_path():
+    import config
+    from pathlib import Path
+    return Path(config.HEALTH_FILE)
 
 
 # ── Persistance ────────────────────────────────────────────────────────────────
 
 def _load() -> dict:
-    path = Path(HEALTH_FILE)
+    path = _health_path()
     if path.exists():
         with open(path) as f:
             return json.load(f)
@@ -40,7 +45,9 @@ def _load() -> dict:
 
 
 def _save(state: dict):
-    with open(HEALTH_FILE, "w") as f:
+    path = _health_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
         json.dump(state, f, indent=2, default=str)
 
 

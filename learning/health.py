@@ -21,34 +21,31 @@ from notifications.telegram_bot import send_status
 
 logger = logging.getLogger(__name__)
 
-
-def _health_path():
-    import config
-    from pathlib import Path
-    return Path(config.HEALTH_FILE)
+_KEY = "trading:health"
+_DEFAULT = {
+    "consecutive_losses": 0,
+    "daily_pnl": 0.0,
+    "last_daily_reset": None,
+    "last_report_date": None,
+    "paused_until": None,
+}
 
 
 # ── Persistance ────────────────────────────────────────────────────────────────
 
 def _load() -> dict:
-    path = _health_path()
-    if path.exists():
-        with open(path) as f:
-            return json.load(f)
-    return {
-        "consecutive_losses": 0,
-        "daily_pnl": 0.0,
-        "last_daily_reset": datetime.now(timezone.utc).date().isoformat(),
-        "last_report_date": None,
-        "paused_until": None,
-    }
+    from storage.store import load
+    import config
+    state = load(_KEY, config.HEALTH_FILE, default=dict(_DEFAULT))
+    if state.get("last_daily_reset") is None:
+        state["last_daily_reset"] = datetime.now(timezone.utc).date().isoformat()
+    return state
 
 
 def _save(state: dict):
-    path = _health_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(state, f, indent=2, default=str)
+    from storage.store import save
+    import config
+    save(_KEY, config.HEALTH_FILE, state)
 
 
 # ── Vérification de pause ──────────────────────────────────────────────────────

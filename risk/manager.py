@@ -30,19 +30,20 @@ logger = logging.getLogger(__name__)
 
 # ── Suivi de l'équité (persistant) ────────────────────────────────────────────
 
+_EQUITY_KEY = "trading:equity"
+
+
 def _load_equity_state() -> dict:
-    path = Path(config.EQUITY_FILE)
-    if path.exists():
-        with open(path) as f:
-            return json.load(f)
-    return {"peak_equity": config.CAPITAL, "current_equity": config.CAPITAL}
+    from storage.store import load
+    return load(
+        _EQUITY_KEY, config.EQUITY_FILE,
+        default={"peak_equity": config.CAPITAL, "current_equity": config.CAPITAL},
+    )
 
 
 def _save_equity_state(state: dict):
-    path = Path(config.EQUITY_FILE)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(state, f, indent=2)
+    from storage.store import save
+    save(_EQUITY_KEY, config.EQUITY_FILE, state)
 
 
 def update_equity(current_balance: float):

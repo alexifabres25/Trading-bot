@@ -16,25 +16,24 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+_KEY = "trading:journal"
 
-def _journal_path():
+
+def _path():
     import config
-    return Path(config.JOURNAL_FILE)
+    return config.JOURNAL_FILE
 
 
 def load_journal() -> list[dict]:
-    path = _journal_path()
-    if path.exists():
-        with open(path) as f:
-            return json.load(f)
-    return []
+    from storage.store import load
+    import config
+    return load(_KEY, config.JOURNAL_FILE, default=[])
 
 
 def save_journal(entries: list[dict]):
-    path = _journal_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(entries, f, indent=2, default=str)
+    from storage.store import save
+    import config
+    save(_KEY, config.JOURNAL_FILE, entries)
 
 
 def record_entry(

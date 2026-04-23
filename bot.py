@@ -54,19 +54,17 @@ logger = logging.getLogger(config.BOT_NAME)
 
 # ── State (positions ouvertes) ─────────────────────────────────────────────────
 
+_STATE_KEY = "trading:state"
+
+
 def load_state() -> dict:
-    path = Path(config.STATE_FILE)
-    if path.exists():
-        with open(path) as f:
-            return json.load(f)
-    return {}
+    from storage.store import load
+    return load(_STATE_KEY, config.STATE_FILE, default={})
 
 
 def save_state(state: dict):
-    path = Path(config.STATE_FILE)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(state, f, indent=2, default=str)
+    from storage.store import save
+    save(_STATE_KEY, config.STATE_FILE, state)
 
 
 # ── Calcul du Take Profit ──────────────────────────────────────────────────────

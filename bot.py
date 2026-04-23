@@ -22,7 +22,7 @@ from pathlib import Path
 
 import config
 from exchange.client import BinanceClient
-from exchange.sync import reconcile
+from exchange.sync import reconcile, recover_positions
 from learning.analyzer import analyze_and_adapt
 from learning.journal import record_entry, record_exit
 from risk.manager import update_equity, update_risk_multiplier
@@ -389,6 +389,13 @@ def main():
         logger.info(f"{len(positions)} position(s) rechargée(s) depuis {config.STATE_FILE}")
         positions = reconcile(client, positions)
         save_state(positions)
+    elif not config.DRY_RUN:
+        # state.json vide (redémarrage Railway) → scanner les soldes réels
+        logger.info("[Sync] state.json vide — scan des soldes Binance pour détecter les positions")
+        positions = recover_positions(client, config.TRADING_PAIRS)
+        if positions:
+            save_state(positions)
+            logger.info(f"[Sync] {len(positions)} position(s) récupérée(s) depuis Binance")
 
     # Force le premier rapport dès le démarrage (ignore le cooldown)
     for sym in config.TRADING_PAIRS:

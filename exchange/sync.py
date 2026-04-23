@@ -10,10 +10,12 @@ Scénarios couverts :
     ou ordre exécuté pendant la panne) → suppression de l'état
   - Quantité différente entre état interne et solde réel (frais, arrondi partiel)
     → ajustement silencieux
+  - state.json vide/absent après redémarrage Railway → détection depuis les soldes réels
   - Telegram alert sur tout écart > 5 %
 """
 
 import logging
+from datetime import datetime, timezone
 
 from notifications.telegram_bot import send_status
 
@@ -90,3 +92,66 @@ def reconcile(client, positions: dict) -> dict:
         logger.info("[Sync] Toutes les positions sont cohérentes avec l'exchange.")
 
     return corrected
+
+
+def recover_positions(client, known_pairs: list) -> dict:
+    """
+    Détecte les positions ouvertes directement depuis les soldes Binance.
+    Appelé quand state.json est vide après un redémarrage Railway.
+    Empêche le bot d'ouvrir un 2ème trade sur une paire déjà en position.
+    """
+    import config
+
+    recovered = {}
+
+    try:
+        balance = client.exchange.fetch_balance()
+    except Exception as exc:
+        logger.warning(f"[Sync] Impossible de scanner les soldes : {exc}")
+        return recovered
+
+    for symbol in known_pairs:
+        base = symbol.split("/")[0]
+        free = float(balance.get("free", {}).get(base, 0))
+        used = float(balance.get("used", {}).get(base, 0))
+        qty = free + used
+
+        if qty < 0.00001:
+            continue
+
+        try:
+            price = client.get_current_price(symbol)
+        except Exception:
+            continue
+
+        if qty * price < 10:
+            continue
+
+        stop_loss = round(price * (1 - config.STOP_LOSS_PCT), 8)
+        take_profit = round(price * (1 + config.STOP_LOSS_PCT * config.TAKE_PROFIT_RATIO), 8)
+
+        recovered[symbol] = {
+            "side": "long",
+            "entry_price": price,
+            "amount": round(qty, 6),
+            "stop_loss": stop_loss,
+            "take_profit": take_profit,
+            "entry_time": datetime.now(timezone.utc).isoformat(),
+            "dry_run": False,
+            "trade_id": None,
+            "recovered": True,
+        }
+        logger.warning(
+            f"[Sync] Position récupérée : {symbol}  qty={qty:.6f}  "
+            f"prix_approx={price:.4f}  stop={stop_loss:.4f}"
+        )
+
+    if recovered:
+        lines = [f"  • *{s}* : `{p['amount']:.6f}` récupéré" for s, p in recovered.items()]
+        send_status(
+            "🔄 *Positions récupérées après redémarrage*\n"
+            "_(state.json vide — soldes Binance utilisés)_\n"
+            + "\n".join(lines)
+        )
+
+    return recovered

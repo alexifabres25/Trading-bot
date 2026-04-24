@@ -30,6 +30,9 @@ _DEFAULT = {
     "paused_until": None,
 }
 
+# Verrou en mémoire — empêche le spam même si Redis/fichier échoue
+_report_sent_for_date: str | None = None
+
 
 # ── Persistance ────────────────────────────────────────────────────────────────
 
@@ -154,19 +157,28 @@ def maybe_send_daily_report():
     """
     Envoie le rapport journalier si l'heure configurée est atteinte
     et qu'il n'a pas encore été envoyé aujourd'hui.
+    Double protection : verrou mémoire + persistance Redis/fichier.
     """
+    global _report_sent_for_date
+
     now = datetime.now(timezone.utc)
     today = now.date().isoformat()
 
     if now.hour < config.DAILY_REPORT_HOUR:
         return
 
+    # Verrou mémoire (résistant aux échecs de persistance)
+    if _report_sent_for_date == today:
+        return
+
     state = _load()
     if state.get("last_report_date") == today:
-        return  # déjà envoyé aujourd'hui
+        _report_sent_for_date = today  # sync le verrou mémoire
+        return
 
     _send_report(state, today)
     state["last_report_date"] = today
+    _report_sent_for_date = today  # marquer immédiatement en mémoire
     _save(state)
 
 

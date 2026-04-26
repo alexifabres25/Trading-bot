@@ -34,6 +34,7 @@ from strategy.indicators import (
 )
 from strategy.signal import BUY, HOLD, SELL, generate_1h_signal, get_4h_trend, get_weekly_trend
 from news.sentiment import get_fear_greed, should_block_buy
+from notifications.telegram_commands import start_command_listener, stop_command_listener
 
 # Rate-limit pour les notifications de diagnostic (1 par heure par symbole)
 _last_scan_ts: dict[str, float] = {}
@@ -401,6 +402,9 @@ def main():
     for sym in config.TRADING_PAIRS:
         _last_scan_ts[sym] = 0.0
 
+    # Écoute des commandes Telegram (/journal, /status, /help)
+    start_command_listener(positions, client)
+
     while True:
         try:
             maybe_send_daily_report()
@@ -428,6 +432,7 @@ def main():
 
         except KeyboardInterrupt:
             logger.info("Arrêt demandé par l'utilisateur.")
+            stop_command_listener()
             send_status("Bot arrêté manuellement.")
             break
         except Exception as exc:

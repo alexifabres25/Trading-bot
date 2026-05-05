@@ -35,36 +35,42 @@ else:
 
 # ── Primitives Redis ───────────────────────────────────────────────────────────
 
-def _redis_get(key: str):
+def _redis_cmd(*args) -> object:
+    """Exécute une commande Redis via l'API pipeline Upstash."""
     try:
-        resp = requests.get(
-            f"{_URL}/get/{key}",
-            headers={"Authorization": f"Bearer {_TOKEN}"},
-            timeout=5,
-        )
-        result = resp.json().get("result")
-        return json.loads(result) if result else None
-    except Exception as exc:
-        logger.warning(f"[Redis] GET {key} : {exc}")
-        return None
-
-
-def _redis_set(key: str, value) -> bool:
-    try:
-        serialized = json.dumps(value, default=str)
         resp = requests.post(
-            f"{_URL}/set/{key}",
+            _URL,
             headers={
                 "Authorization": f"Bearer {_TOKEN}",
                 "Content-Type": "application/json",
             },
-            data=serialized.encode(),
-            timeout=5,
+            json=list(args),
+            timeout=8,
         )
-        return resp.json().get("result") == "OK"
+        resp.raise_for_status()
+        return resp.json().get("result")
     except Exception as exc:
-        logger.warning(f"[Redis] SET {key} : {exc}")
-        return False
+        logger.warning(f"[Redis] {args[0]} '{args[1] if len(args) > 1 else ''}' : {exc}")
+        return None
+
+
+def _redis_get(key: str):
+    result = _redis_cmd("GET", key)
+    if result is None:
+        return None
+    try:
+        return json.loads(result)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def _redis_set(key: str, value) -> bool:
+    serialized = json.dumps(value, default=str)
+    result = _redis_cmd("SET", key, serialized)
+    ok = result == "OK"
+    if not ok:
+        logger.warning(f"[Redis] SET {key} → résultat inattendu : {result}")
+    return ok
 
 
 # ── API publique ───────────────────────────────────────────────────────────────

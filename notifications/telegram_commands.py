@@ -40,17 +40,20 @@ def _get_updates() -> list:
         return []
 
 
-def _handle_journal():
+def _handle_journal(limit: int = 0):
     from learning.journal import load_journal
     journal = load_journal()
     closed = [t for t in journal if t.get("status") == "closed"]
+    open_trades = [t for t in journal if t.get("status") == "open"]
 
-    if not closed:
-        return "Aucun trade fermé pour l'instant."
+    if not closed and not open_trades:
+        return "Aucun trade enregistré pour l'instant."
 
-    recent = closed[-10:][::-1]
-    lines = [f"📋 *10 derniers trades*\n"]
-    for t in recent:
+    lines = [f"📋 *Historique complet — {len(closed)} trades fermés*\n"]
+
+    # Trades fermés (tous ou les N derniers)
+    to_show = closed if limit == 0 else closed[-limit:]
+    for t in reversed(to_show):
         icon = "✅" if t.get("outcome") == "win" else "❌"
         pnl = t.get("pnl_net_usdt", 0)
         pnl_pct = t.get("pnl_net_pct", 0)
@@ -58,17 +61,35 @@ def _handle_journal():
         reason = t.get("exit_reason", "?")
         lines.append(
             f"{icon} *{t['symbol']}* — {date}\n"
-            f"   Entrée `{t['entry_price']:.2f}` → Sortie `{t['exit_price']:.2f}`\n"
-            f"   PnL net : `{pnl:+.2f} USDT` ({pnl_pct:+.2f}%) — _{reason}_\n"
+            f"   `{t['entry_price']:.2f}` → `{t['exit_price']:.2f}`"
+            f"  |  `{pnl:+.2f} USDT` ({pnl_pct:+.2f}%)  _{reason}_\n"
         )
 
-    wins = [t for t in closed if t.get("outcome") == "win"]
-    win_rate = len(wins) / len(closed) * 100 if closed else 0
-    total_pnl = sum(t.get("pnl_net_usdt", 0) for t in closed)
-    lines.append(
-        f"\n📊 *Total* : {len(closed)} trades | "
-        f"Win rate `{win_rate:.0f}%` | PnL net `{total_pnl:+.2f} USDT`"
-    )
+    # Positions ouvertes
+    if open_trades:
+        lines.append(f"\n📂 *Positions ouvertes ({len(open_trades)})*")
+        for t in open_trades:
+            date = t.get("entry_time", "")[:10]
+            lines.append(
+                f"⏳ *{t['symbol']}* — ouvert le {date}\n"
+                f"   Entrée `{t['entry_price']:.2f}` | Qté `{t['amount']:.6f}`\n"
+            )
+
+    # Statistiques globales
+    if closed:
+        wins = [t for t in closed if t.get("outcome") == "win"]
+        win_rate = len(wins) / len(closed) * 100
+        total_pnl = sum(t.get("pnl_net_usdt", 0) for t in closed)
+        avg_win = sum(t.get("pnl_net_usdt", 0) for t in wins) / len(wins) if wins else 0
+        losses = [t for t in closed if t.get("outcome") == "loss"]
+        avg_loss = sum(t.get("pnl_net_usdt", 0) for t in losses) / len(losses) if losses else 0
+        lines.append(
+            f"\n📊 *Bilan global*\n"
+            f"   Trades : `{len(closed)}` | Win rate : `{win_rate:.0f}%`\n"
+            f"   PnL net total : `{total_pnl:+.2f} USDT`\n"
+            f"   Gain moyen : `{avg_win:+.2f} USDT` | Perte moyenne : `{avg_loss:.2f} USDT`"
+        )
+
     return "\n".join(lines)
 
 

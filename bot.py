@@ -377,12 +377,15 @@ def main():
     logger.info("=" * 60)
 
     client = BinanceClient()
+    from storage.store import REDIS_ENABLED
+    redis_status = "✅ Redis actif (Upstash)" if REDIS_ENABLED else "⚠️ Fichiers locaux (Redis non configuré)"
     send_status(
         f"*{config.BOT_NAME}* démarré — mode *{mode}*\n"
         f"Paires   : {', '.join(config.TRADING_PAIRS)}\n"
         f"Capital  : {config.CAPITAL} USDT\n"
         f"SL : {config.STOP_LOSS_PCT*100:.1f}%  |  TP : {config.TAKE_PROFIT_RATIO}:1  |  "
-        f"Risque : {config.RISK_PER_TRADE*100:.0f}%/trade"
+        f"Risque : {config.RISK_PER_TRADE*100:.0f}%/trade\n"
+        f"Mémoire  : {redis_status}"
     )
 
     positions = load_state()

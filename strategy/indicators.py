@@ -130,6 +130,8 @@ def get_supertrend_stop(df: pd.DataFrame) -> float | None:
 
 def get_ema_trend(df: pd.DataFrame, ema_fast: int, ema_slow: int) -> str:
     """Retourne 'bull', 'bear' ou 'neutral' selon l'alignement EMA."""
+    if df.empty:
+        return "neutral"
     fast = df[f"ema_{ema_fast}"].iloc[-1]
     slow = df[f"ema_{ema_slow}"].iloc[-1]
     if fast > slow:
@@ -170,6 +172,8 @@ def get_weekly_trend(df_weekly: pd.DataFrame) -> str:
     N'achète pas si 'bear' — évite de trader long dans un marché 2022-style.
     """
     import config as _cfg
+    if df_weekly.empty:
+        return "bull"
     ema200 = _ema(df_weekly["close"], _cfg.EMA_WEEKLY_PERIOD)
     ema200_clean = ema200.dropna()
     if ema200_clean.empty:

@@ -38,11 +38,9 @@ def generate_1h_signal(df: pd.DataFrame) -> str:
         if not (adx_val != adx_val):  # pas NaN
             adx_ok = float(adx_val) >= config.ADX_TREND_MIN
 
-    # Filtre spread EMA (activé dynamiquement par l'analyzer si trop de croisements faibles)
-    ema_spread_min = getattr(config, "EMA_SPREAD_MIN", 0.0)
     ema_spread_pct = (fast.iloc[-1] - slow.iloc[-1]) / slow.iloc[-1] * 100
 
-    if bullish_cross and rsi.iloc[-1] < config.RSI_OVERBOUGHT and ema_spread_pct > ema_spread_min and adx_ok:
+    if bullish_cross and rsi.iloc[-1] < config.RSI_OVERBOUGHT and ema_spread_pct > config.EMA_SPREAD_MIN and adx_ok:
         return BUY
     if bearish_cross and rsi.iloc[-1] > config.RSI_OVERSOLD:
         return SELL

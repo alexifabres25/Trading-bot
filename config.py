@@ -120,6 +120,11 @@ TIMEFRAME_WEEKLY: str = "1w"
 EMA_WEEKLY_PERIOD: int = 200
 CANDLES_WEEKLY: int = 210       # 210 semaines ≈ 4 ans pour calculer EMA 200
 
+# ── Filtre spread EMA — anti-whipsaw ──────────────────────────────────────────
+# Bloque les signaux BUY avec un spread EMA trop faible (croisements faibles = faux signaux).
+# 0.05 = le spread doit être > 0.05% pour déclencher un achat.
+EMA_SPREAD_MIN: float = float(os.getenv("EMA_SPREAD_MIN", "0.05"))
+
 # ── Boucle principale ──────────────────────────────────────────────────────────
 LOOP_INTERVAL: int = int(os.getenv("LOOP_INTERVAL", "300"))
 

@@ -61,8 +61,11 @@ class BinanceClient:
             self.exchange.set_sandbox_mode(True)
             logger.info("Mode TESTNET activé")
         # Synchronise l'horloge locale avec Binance (corrige l'erreur -1021)
-        self.exchange.load_time_difference()
-        logger.info("[Binance] Synchronisation horloge effectuée")
+        try:
+            self.exchange.load_time_difference()
+            logger.info("[Binance] Synchronisation horloge effectuée")
+        except Exception as exc:
+            logger.warning(f"[Binance] Synchro horloge échouée (ignorée) : {exc}")
         if self.dry_run:
             logger.info("Mode DRY RUN activé — aucun ordre réel")
         elif not config.USE_TESTNET:

@@ -382,7 +382,21 @@ def main():
     )
     logger.info("=" * 60)
 
-    client = BinanceClient()
+    # Connexion Binance avec retry (Railway peut démarrer avant que le réseau soit dispo)
+    client = None
+    for _attempt in range(5):
+        try:
+            client = BinanceClient()
+            break
+        except Exception as exc:
+            wait = 2 ** _attempt
+            logger.warning(f"[Startup] Connexion Binance échouée ({exc}) — retry dans {wait}s")
+            time.sleep(wait)
+    if client is None:
+        logger.critical("[Startup] Impossible de se connecter à Binance après 5 tentatives — arrêt")
+        send_error("Impossible de démarrer : connexion Binance échouée (5 tentatives)")
+        return
+
     from storage.store import REDIS_ENABLED
     redis_status = "✅ Redis actif (Upstash)" if REDIS_ENABLED else "⚠️ Fichiers locaux (Redis non configuré)"
     send_status(
@@ -397,15 +411,21 @@ def main():
     positions = load_state()
     if positions:
         logger.info(f"{len(positions)} position(s) rechargée(s) depuis {config.STATE_FILE}")
-        positions = reconcile(client, positions)
-        save_state(positions)
+        try:
+            positions = reconcile(client, positions)
+            save_state(positions)
+        except Exception as exc:
+            logger.warning(f"[Startup] Réconciliation échouée (ignorée) : {exc}")
     elif not config.DRY_RUN:
         # state.json vide (redémarrage Railway) → scanner les soldes réels
         logger.info("[Sync] state.json vide — scan des soldes Binance pour détecter les positions")
-        positions = recover_positions(client, config.TRADING_PAIRS)
-        if positions:
-            save_state(positions)
-            logger.info(f"[Sync] {len(positions)} position(s) récupérée(s) depuis Binance")
+        try:
+            positions = recover_positions(client, config.TRADING_PAIRS)
+            if positions:
+                save_state(positions)
+                logger.info(f"[Sync] {len(positions)} position(s) récupérée(s) depuis Binance")
+        except Exception as exc:
+            logger.warning(f"[Startup] Scan positions échoué (ignoré) : {exc}")
 
     # Force le premier rapport dès le démarrage (ignore le cooldown)
     for sym in config.TRADING_PAIRS:

@@ -20,30 +20,30 @@ TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")
 # ── Trading ────────────────────────────────────────────────────────────────────
 _pairs_raw = os.getenv("TRADING_PAIRS", "BTC/USDT,ETH/USDT")
 TRADING_PAIRS: list[str] = [p.strip() for p in _pairs_raw.split(",")]
-CAPITAL: float = float(os.getenv("CAPITAL", "400"))
-RISK_PER_TRADE: float = float(os.getenv("RISK_PER_TRADE", "0.01"))  # fallback si pas assez de trades Kelly
-STOP_LOSS_PCT: float = float(os.getenv("STOP_LOSS_PCT", "0.02"))
+CAPITAL: float = float(os.getenv("CAPITAL", "400").replace(",", "."))
+RISK_PER_TRADE: float = float(os.getenv("RISK_PER_TRADE", "0.01").replace(",", "."))  # fallback si pas assez de trades Kelly
+STOP_LOSS_PCT: float = float(os.getenv("STOP_LOSS_PCT", "0.02").replace(",", "."))
 FEE_RATE: float = 0.001  # 0.1 % par ordre Binance (taker)
 
 # ── Trailing stop ──────────────────────────────────────────────────────────────
 TRAILING_STOP: bool = os.getenv("TRAILING_STOP", "true").lower() == "true"
-TRAILING_STOP_PCT: float = float(os.getenv("TRAILING_STOP_PCT", "0.02"))
+TRAILING_STOP_PCT: float = float(os.getenv("TRAILING_STOP_PCT", "0.02").replace(",", "."))
 
 # ── Kelly Criterion ────────────────────────────────────────────────────────────
 # Dimensionne le risque automatiquement selon le vrai track record du bot.
 # Quarter-Kelly (0.25) = version conservatrice, réduit la variance de 75 %.
-KELLY_FRACTION: float = float(os.getenv("KELLY_FRACTION", "0.25"))
+KELLY_FRACTION: float = float(os.getenv("KELLY_FRACTION", "0.25").replace(",", "."))
 KELLY_LOOKBACK: int = int(os.getenv("KELLY_LOOKBACK", "100"))   # nb trades pour calcul W/R
-RISK_MAX_CAP: float = float(os.getenv("RISK_MAX_CAP", "0.02"))  # plafond 2 % quoi qu'il arrive
-RISK_MIN_FLOOR: float = float(os.getenv("RISK_MIN_FLOOR", "0.001"))  # plancher 0.1 %
+RISK_MAX_CAP: float = float(os.getenv("RISK_MAX_CAP", "0.02").replace(",", "."))  # plafond 2 % quoi qu'il arrive
+RISK_MIN_FLOOR: float = float(os.getenv("RISK_MIN_FLOOR", "0.001").replace(",", "."))  # plancher 0.1 %
 
 # ── Multiplicateur progressif sur les pertes ──────────────────────────────────
 # Après chaque trade perdant  : risque × (1 - LOSS_RISK_REDUCTION)  → -10%
 # Après chaque trade gagnant  : risque × (1 + WIN_RISK_RECOVERY)    → +5%
 # Exemple : risque de base 1%
 #   Perte → 0.90%  →  perte → 0.81%  →  gain → 0.85%  →  gain → 0.89%...
-LOSS_RISK_REDUCTION: float = float(os.getenv("LOSS_RISK_REDUCTION", "0.10"))  # -10% / perte
-WIN_RISK_RECOVERY: float = float(os.getenv("WIN_RISK_RECOVERY", "0.05"))      # +5% / gain
+LOSS_RISK_REDUCTION: float = float(os.getenv("LOSS_RISK_REDUCTION", "0.10").replace(",", "."))  # -10% / perte
+WIN_RISK_RECOVERY: float = float(os.getenv("WIN_RISK_RECOVERY", "0.05").replace(",", "."))      # +5% / gain
 RISK_MULTIPLIER_MIN: float = 0.20   # plancher : 20% du risque de base (évite de trop écraser)
 RISK_MULTIPLIER_MAX: float = 1.00   # plafond  : jamais au-dessus du risque de base
 
@@ -103,13 +103,13 @@ API_CIRCUIT_BREAKER_TIMEOUT: float = 120.0 # secondes avant réessai
 # ── Take Profit dynamique (ratio risque/récompense) ───────────────────────────
 # TP = entry + TAKE_PROFIT_RATIO × stop_distance  →  2:1 par défaut
 TAKE_PROFIT_ENABLED: bool = os.getenv("TAKE_PROFIT_ENABLED", "true").lower() == "true"
-TAKE_PROFIT_RATIO: float = float(os.getenv("TAKE_PROFIT_RATIO", "2.0"))
+TAKE_PROFIT_RATIO: float = float(os.getenv("TAKE_PROFIT_RATIO", "2.0").replace(",", "."))
 
 # ── Filtre ATR — bloque les entrées en volatilité extrême ─────────────────────
 # Evite d'acheter quand une bougie anormale vient de se produire (news macro,
 # liquidation en cascade). ATR actuel > ATR_FILTER_MULTIPLIER × ATR moyen → skip.
 ATR_FILTER_ENABLED: bool = os.getenv("ATR_FILTER_ENABLED", "false").lower() == "true"
-ATR_FILTER_MULTIPLIER: float = float(os.getenv("ATR_FILTER_MULTIPLIER", "2.0"))
+ATR_FILTER_MULTIPLIER: float = float(os.getenv("ATR_FILTER_MULTIPLIER", "2.0").replace(",", "."))
 ATR_FILTER_LOOKBACK: int = 50   # bougies pour calculer l'ATR moyen de référence
 
 # ── Filtre tendance Weekly — EMA 200 (1W) ─────────────────────────────────────
@@ -123,7 +123,7 @@ CANDLES_WEEKLY: int = 210       # 210 semaines ≈ 4 ans pour calculer EMA 200
 # ── Filtre spread EMA — anti-whipsaw ──────────────────────────────────────────
 # Bloque les signaux BUY avec un spread EMA trop faible (croisements faibles = faux signaux).
 # 0.05 = le spread doit être > 0.05% pour déclencher un achat.
-EMA_SPREAD_MIN: float = float(os.getenv("EMA_SPREAD_MIN", "0.05"))
+EMA_SPREAD_MIN: float = float(os.getenv("EMA_SPREAD_MIN", "0.05").replace(",", "."))
 
 # ── Boucle principale ──────────────────────────────────────────────────────────
 LOOP_INTERVAL: int = int(os.getenv("LOOP_INTERVAL", "300"))

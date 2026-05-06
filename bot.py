@@ -42,13 +42,19 @@ _last_block_ts: dict[str, float] = {}
 _NOTIF_COOLDOWN = 3600.0  # 1 heure
 
 # ── Logging ────────────────────────────────────────────────────────────────────
+_log_handlers = [logging.StreamHandler()]
+try:
+    _log_file = config.STATE_FILE.replace("state", "bot").replace(".json", ".log")
+    from pathlib import Path as _Path
+    _Path(_log_file).parent.mkdir(parents=True, exist_ok=True)
+    _log_handlers.append(logging.FileHandler(_log_file))
+except Exception:
+    pass  # Railway : logs stdout suffisent si le fichier est inaccessible
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(f"{config.STATE_FILE.replace('state', 'bot').replace('.json', '.log')}"),
-    ],
+    handlers=_log_handlers,
 )
 logger = logging.getLogger(config.BOT_NAME)
 
